@@ -32,6 +32,14 @@ Then build and upload at once:
 ./waf copter --upload --board CubeOrangePlus
 ```
 
+## SensAItion sensor configuration
+Since the Ardupilot is only connected to the SensAItion Data UART (and not the User UART), we cannot change the configuration of the sensor from Ardupilot.
+Therefore we expect it to have the following Binary Data UART output config string (user register 3):
+    - IMU: o0002s240030020010000130120110100230220210200330320310300430420410400530520510500910900A10A00B10B00C10C00D30D20D10D0x
+    - AHRS: o0004s340030020010000130120110100230220210200330320310300430420410400530520510500910900A10A00B10B00C10C00D30D20D10D04C34C24C14C04D34D24D14D04E34E24E14E04F34F24F14F0x
+    - INS: Not supported for now
+
+
 ## Connecting with MissionPlanner
 If the Cube Orange+ connected via USB shows up as a "USB Serial Port" in the Windows Device Manager, Mission Planner cannot connect to it. If so, one needs to upgrade its firmware by opening the tab "Setup/Install Firmware" in Mission Planner and programming "Copter V4.6.2 OFFICIAL" to the Cube. After that, it should show up as "Cube Orange+ Mavlink" and "Cube Orange+ SLCAN" in the Device Manager. The Mavlink port works for Mission Planner to connect to in the "Auto" connection mode.
 

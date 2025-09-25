@@ -149,6 +149,7 @@ void AP_ExternalAHRS_SensAItion::initializeSensorDefinitions() {
     defineSensor(0x66, "quality_vel_down", "m/s", DataType::FLOAT, 1e-3);
     
     // GNSS data
+    // REVIEW: According to sensor_data_backend, these two have type DataType::UINT8x2
     defineSensor(0x43, "gnss_num_satellites", "", DataType::UINT8x4, 1.0);
     defineSensor(0x4A, "gnss_fix_type", "", DataType::UINT16x2, 1.0);
 
@@ -556,7 +557,7 @@ int32_t AP_ExternalAHRS_SensAItion::combineBytes(const uint8_t* packet, const in
     return result;
 }
 
-// Standard SensAItion parser implementation, with ardupiilot debug messages added
+// Standard SensAItion parser implementation, with ardupilot debug messages added
 void AP_ExternalAHRS_SensAItion::updateSensorValue(int sensor_id, int32_t raw_value) {
     if (sensor_id < 0 || sensor_id > MAX_SENSOR_ID) return;
     
@@ -625,7 +626,7 @@ void AP_ExternalAHRS_SensAItion::updateSensorValue(int sensor_id, int32_t raw_va
         sensor_value.data.duint16x2[0] = static_cast<uint16_t>((static_cast<uint32_t>(raw_value) >> 16) & 0xFFFF);
         sensor_value.data.duint16x2[1] = static_cast<uint16_t>(static_cast<uint32_t>(raw_value) & 0xFFFF);
         break;
-        
+
     case DataType::UINT8x4:
         sensor_value.data.duint8x4[0] = static_cast<uint8_t>((static_cast<uint32_t>(raw_value) >> 24) & 0xFF);
         sensor_value.data.duint8x4[1] = static_cast<uint8_t>((static_cast<uint32_t>(raw_value) >> 16) & 0xFF);

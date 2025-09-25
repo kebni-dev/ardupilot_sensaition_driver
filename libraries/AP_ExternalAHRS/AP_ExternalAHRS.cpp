@@ -90,7 +90,7 @@ const AP_Param::GroupInfo AP_ExternalAHRS::var_info[] = {
     // @Units: Hz
     // @User: Standard
     AP_GROUPINFO("_LOG_RATE", 5, AP_ExternalAHRS, log_rate, 10),
-    
+
     AP_GROUPEND
 };
 
@@ -289,7 +289,7 @@ bool AP_ExternalAHRS::pre_arm_check(char *failure_msg, uint8_t failure_msg_len) 
 
     if (!state.have_origin) {
         hal.util->snprintf(failure_msg, failure_msg_len, "ExternalAHRS: No origin");
-	    return false;
+        return false;
     }
     return true;
 }
@@ -466,7 +466,8 @@ const char* AP_ExternalAHRS::get_name() const
     return nullptr;
 }
 
-namespace AP {
+namespace AP
+{
 
 AP_ExternalAHRS &externalAHRS()
 {
