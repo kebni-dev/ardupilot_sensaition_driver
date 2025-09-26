@@ -65,7 +65,7 @@ public:
         // 9 reserved for EulerNav
         // 10 reserved for Aeron
 #if AP_EXTERNAL_AHRS_SENSAITION_ENABLED
-    SensAItion      = 11,
+        SensAItion = 11,
 #endif
     };
 

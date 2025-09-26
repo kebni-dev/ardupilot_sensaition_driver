@@ -34,6 +34,8 @@
 
 extern const AP_HAL::HAL &hal;
 
+// REVIEW: The style guide recommends initializing variables in the H file, not here.
+// We especially should not use both, like with parse_state_.
 AP_ExternalAHRS_SensAItion::AP_ExternalAHRS_SensAItion(AP_ExternalAHRS *_frontend, AP_ExternalAHRS::state_t &_state) :
     AP_ExternalAHRS_backend(_frontend, _state),
     parse_state_(LOOKING_FOR_HEADER),
@@ -45,11 +47,16 @@ AP_ExternalAHRS_SensAItion::AP_ExternalAHRS_SensAItion(AP_ExternalAHRS *_fronten
     last_valid_packet_ms(0),
     valid_packets(0)
 {
-
     // Tell ardupilot that we do not provide location or velocity
-      state.have_location = false;
-      state.have_velocity = false;
-      state.have_origin = true; // OK?
+    {
+        WITH_SEMAPHORE(state.sem);
+        state.have_location = false;
+        state.have_velocity = false;
+
+        // REVIEW: I think we should leave this as false unless we have an INS
+        // so we can do like VectorNav and set it to the position of the first 3D GNSS fix.
+        state.have_origin = true; // OK?
+    }
 
     // Allocate packet buffer
     packet_buffer_ = NEW_NOTHROW uint8_t[MAX_PACKET_SIZE];
@@ -66,6 +73,7 @@ AP_ExternalAHRS_SensAItion::AP_ExternalAHRS_SensAItion(AP_ExternalAHRS *_fronten
     port_num = sm.find_portnum(AP_SerialManager::SerialProtocol_AHRS, 0);
 
     // Create thread for non-blocking UART processing
+    // REVIEW: Shouldn't we use AP_HAL::Scheduler::PRIORITY_UART?
     if (!hal.scheduler->thread_create(
         FUNCTOR_BIND_MEMBER(&AP_ExternalAHRS_SensAItion::update_thread, void),
         "AHRS_SensAItion", 2048, AP_HAL::Scheduler::PRIORITY_SPI, 0)) {
@@ -74,10 +82,8 @@ AP_ExternalAHRS_SensAItion::AP_ExternalAHRS_SensAItion(AP_ExternalAHRS *_fronten
     }
 }
 
-
-
 //SensAItion parser 
-bool AP_ExternalAHRS_SensAItion::parseMultipleBytes(const uint8_t* data, size_t data_size) {
+bool AP_ExternalAHRS_SensAItion::parse_multiple_bytes(const uint8_t* data, size_t data_size) {
     bool processed_any = false;
     
     for (size_t i = 0; i < data_size; i++) {
@@ -96,11 +102,12 @@ bool AP_ExternalAHRS_SensAItion::parseMultipleBytes(const uint8_t* data, size_t 
             packet_buffer_[packet_buffer_len_++] = byte;
             
             // Simple fixed packet size collection based on current mode
-            size_t expected_size = (getConfigMode() == CONFIG_MODE_IMU) ? 38 : 54;
+            // REVIEW: Use named constants for magic numbers? They are also repeated below.
+            size_t expected_size = (get_config_mode() == CONFIG_MODE_IMU) ? 38 : 54;
 
             if (packet_buffer_len_ == expected_size) {
                 // Parse packet with mode-specific parser
-                if (parsePacket(packet_buffer_, packet_buffer_len_)) {
+                if (parse_packet(packet_buffer_, packet_buffer_len_)) {
                     processed_any = true;
                     valid_packets++;
                     last_valid_packet_ms = AP_HAL::millis();
@@ -112,6 +119,8 @@ bool AP_ExternalAHRS_SensAItion::parseMultipleBytes(const uint8_t* data, size_t 
             }
             // If packet_buffer_len_ < expected_size, keep collecting
             
+            // REVIEW: Should we stop already if packet_buffer_len_ == MAX_PACKET_SIZE?
+            // Otherwise the next call might access packet_buffer_[MAX_PACKET_SIZE], which is out of bounds.
             if (packet_buffer_len_ > MAX_PACKET_SIZE) {
                 // Prevent buffer overflow
                 parse_state_ = LOOKING_FOR_HEADER;
@@ -124,10 +133,10 @@ bool AP_ExternalAHRS_SensAItion::parseMultipleBytes(const uint8_t* data, size_t 
 }
 
 // Packet parser 
-bool AP_ExternalAHRS_SensAItion::parsePacket(const uint8_t* packet, size_t packet_size) {
+bool AP_ExternalAHRS_SensAItion::parse_packet(const uint8_t* packet, size_t packet_size) {
     // Get expected size based on mode
-    size_t expected_size = (getConfigMode() == CONFIG_MODE_IMU) ? 38 : 54;
-    const char* mode_name = (getConfigMode() == CONFIG_MODE_IMU) ? "IMU" : "AHRS";
+    size_t expected_size = (get_config_mode() == CONFIG_MODE_IMU) ? 38 : 54;
+    const char* mode_name = (get_config_mode() == CONFIG_MODE_IMU) ? "IMU" : "AHRS";
 
     // Validate packet structure
     if (packet_size != expected_size || packet[0] != HEADER_BYTE) {
@@ -140,73 +149,73 @@ bool AP_ExternalAHRS_SensAItion::parsePacket(const uint8_t* packet, size_t packe
     }
 
     // Validate checksum
-    uint8_t calculated = calculateXorChecksum(packet, 1, packet_size - 2);
+    uint8_t calculated = calculate_xor_checksum(packet, 1, packet_size - 2);
     uint8_t received = packet[packet_size - 1];
     if (calculated != received) {
         return false;
     }
 
-    return extractSensorData(packet);
+    return extract_sensor_data(packet);
 }
 
 // Sensor data extraction, scaling and update ardupilot state
-bool AP_ExternalAHRS_SensAItion::extractSensorData(const uint8_t* packet) {
+bool AP_ExternalAHRS_SensAItion::extract_sensor_data(const uint8_t* packet) {
     WITH_SEMAPHORE(state.sem);
 
     // Extract and scale accelerometer (µg to g, 1e-6 scale)
-    int32_t accel_x_raw = (packet[1]<<24)|(packet[2]<<16)|(packet[3]<<8)|packet[4];
-    int32_t accel_y_raw = (packet[5]<<24)|(packet[6]<<16)|(packet[7]<<8)|packet[8];
-    int32_t accel_z_raw = (packet[9]<<24)|(packet[10]<<16)|(packet[11]<<8)|packet[12];
+    int32_t accel_x_ug = (packet[1]<<24)|(packet[2]<<16)|(packet[3]<<8)|packet[4];
+    int32_t accel_y_ug = (packet[5]<<24)|(packet[6]<<16)|(packet[7]<<8)|packet[8];
+    int32_t accel_z_ug = (packet[9]<<24)|(packet[10]<<16)|(packet[11]<<8)|packet[12];
 
-    Vector3f accel_data(accel_x_raw * 1e-6f, accel_y_raw * 1e-6f, accel_z_raw * 1e-6f);
-    accel_data *= GRAVITY_MSS; // Convert g to m/s^2
-    state.accel = accel_data;
+    Vector3f accel_g(accel_x_ug * 1e-6f, accel_y_ug * 1e-6f, accel_z_ug * 1e-6f);
+    state.accel = accel_g * GRAVITY_MSS; // Convert g to m/s^2
 
     // Extract and scale gyroscope (µdeg/s to deg/s, 1e-6 scale, then to rad/s)
     int32_t gyro_x_raw = (packet[13]<<24)|(packet[14]<<16)|(packet[15]<<8)|packet[16];
     int32_t gyro_y_raw = (packet[17]<<24)|(packet[18]<<16)|(packet[19]<<8)|packet[20];
     int32_t gyro_z_raw = (packet[21]<<24)|(packet[22]<<16)|(packet[23]<<8)|packet[24];
 
-    Vector3f gyro_deg(gyro_x_raw * 1e-6f, gyro_y_raw * 1e-6f, gyro_z_raw * 1e-6f);
-    Vector3f gyro_data(radians(gyro_deg.x), radians(gyro_deg.y), radians(gyro_deg.z));
-    state.gyro = gyro_data;
+    Vector3f gyro_degs(gyro_x_raw * 1e-6f, gyro_y_raw * 1e-6f, gyro_z_raw * 1e-6f);
+    Vector3f gyro_rads(radians(gyro_degs.x), radians(gyro_degs.y), radians(gyro_degs.z));
+    state.gyro = gyro_rads;
 
     // Extract and scale temperature (2 bytes, special formula)
     int16_t temp_raw = (packet[25]<<8)|packet[26];
-    float temp_celsius = (static_cast<float>(temp_raw) / 10000.0f) * 80.0f + 20.0f;
+    float temp_degc = static_cast<float>(temp_raw) * 0.008f + 20.0f;
 
     // Send IMU data to ArduPilot
     AP_ExternalAHRS::ins_data_message_t ins;
-    ins.accel = accel_data;
-    ins.gyro = gyro_data;
-    ins.temperature = temp_celsius;
+    ins.accel = state.accel;
+    ins.gyro = state.gyro;
+    ins.temperature = temp_degc;
     AP::ins().handle_external(ins);
 
     // Extract magnetometer (2 bytes each, already in mGauss)
-    int16_t mag_x_raw = (packet[27]<<8)|packet[28];
-    int16_t mag_y_raw = (packet[29]<<8)|packet[30];
-    int16_t mag_z_raw = (packet[31]<<8)|packet[32];
+    int16_t mag_x_mgauss = (packet[27]<<8)|packet[28];
+    int16_t mag_y_mgauss = (packet[29]<<8)|packet[30];
+    int16_t mag_z_mgauss = (packet[31]<<8)|packet[32];
 
 #if AP_COMPASS_EXTERNALAHRS_ENABLED
     AP_ExternalAHRS::mag_data_message_t mag;
-    mag.field = Vector3f(mag_x_raw, mag_y_raw, mag_z_raw); // Already in mGauss
+    mag.field = Vector3f(mag_x_mgauss, mag_y_mgauss, mag_z_mgauss);
     AP::compass().handle_external(mag);
 #endif
 
     // Extract and scale barometer (4 bytes, comes in mhPa, convert to Pa)
-    int32_t baro_raw = (packet[33]<<24)|(packet[34]<<16)|(packet[35]<<8)|packet[36];
-    float pressure_pa = baro_raw * 0.1f; // mhPa to Pa
+    int32_t baro_mhpa = (packet[33]<<24)|(packet[34]<<16)|(packet[35]<<8)|packet[36];
+    float pressure_p = baro_mhpa * 0.1f; // mhPa to Pa
 
 #if AP_BARO_EXTERNALAHRS_ENABLED
     AP_ExternalAHRS::baro_data_message_t baro;
     baro.instance = 0;
-    baro.pressure_pa = pressure_pa;
-    baro.temperature = temp_celsius;
+    // NOTE: The style guide recommends suffix _p for Pa
+    baro.pressure_pa = pressure_p;
+    baro.temperature = temp_degc;
     AP::baro().handle_external(baro);
 #endif
 
     // AHRS mode: extract quaternion
-    if (getConfigMode() == CONFIG_MODE_AHRS) {
+    if (get_config_mode() == CONFIG_MODE_AHRS) {
         int32_t quat_w_raw = (packet[37]<<24)|(packet[38]<<16)|(packet[39]<<8)|packet[40];
         int32_t quat_x_raw = (packet[41]<<24)|(packet[42]<<16)|(packet[43]<<8)|packet[44];
         int32_t quat_y_raw = (packet[45]<<24)|(packet[46]<<16)|(packet[47]<<8)|packet[48];
@@ -223,14 +232,13 @@ bool AP_ExternalAHRS_SensAItion::extractSensorData(const uint8_t* packet) {
         state.have_quaternion = false;
     }
 
-
     return true;
 }
 
 
 
 // Utility methods
-uint8_t AP_ExternalAHRS_SensAItion::calculateXorChecksum(const uint8_t* data, size_t start, size_t length) {
+uint8_t AP_ExternalAHRS_SensAItion::calculate_xor_checksum(const uint8_t* data, size_t start, size_t length) {
     uint8_t checksum = 0;
     for (size_t i = start; i < start + length && i < MAX_PACKET_SIZE; i++) {
         checksum ^= data[i];
@@ -314,12 +322,13 @@ bool AP_ExternalAHRS_SensAItion::check_uart() {
     }
     
     // Read up to 256 bytes at a time
-    uint8_t buffer[256];
+    uint8_t buffer[256]; // REVIEW: Maybe use MAX_PACKET_SIZE since parse_multiple_bytes()
+    // stops parsing if this is larger than packet_buffer_?
     n = MIN(n, sizeof(buffer));
     ssize_t nread = uart->read(buffer, n);
     
     if (nread > 0) {
-        parseMultipleBytes(buffer, nread);
+        parse_multiple_bytes(buffer, nread);
         return true;
     }
     

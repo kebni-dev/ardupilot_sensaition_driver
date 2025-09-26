@@ -47,13 +47,13 @@ public:
 
     // Configuration Mode Selection
     // ============================
-    // SensAItion can operate in two modes:
+    // SensAItion can operate in the following modes:
     // CONFIG_MODE_IMU:  Provides accel, gyro, mag, baro (36 data bytes + header + checksum = 38 total)
     // CONFIG_MODE_AHRS: Provides IMU data + quaternion attitude (52 data bytes + header + checksum = 54 total)
     // CONFIG_MODE_INS:  Not yet supported, is coming later
     //
     // Future: Will become AP_Param configurable via Mission Planner
-    enum ConfigMode {
+    enum class ConfigMode {
         CONFIG_MODE_IMU = 0,   // IMU only mode
         CONFIG_MODE_AHRS = 1   // AHRS mode
     };
@@ -63,19 +63,21 @@ private:
     static constexpr uint8_t HEADER_BYTE = 0xFA;
     static constexpr int MAX_PACKET_SIZE = 256;
     
-    // Packet parsing state machine
-    enum ParseState { LOOKING_FOR_HEADER, COLLECTING_PACKET };
+    // Packet parsing state machine.
+    // Should only be accessed from inside the thread to avoid data races.
+    enum class ParseState { LOOKING_FOR_HEADER, COLLECTING_PACKET, };
     ParseState parse_state_ = LOOKING_FOR_HEADER;
     uint8_t *packet_buffer_;
     uint16_t packet_buffer_len_ = 0;
 
     // SensAItion parser methods
-    uint8_t calculateXorChecksum(const uint8_t* data, size_t start, size_t length);
-    bool extractSensorData(const uint8_t* packet);
+    uint8_t calculate_xor_checksum(const uint8_t* data, size_t start, size_t length);
+    bool extract_sensor_data(const uint8_t* packet);
     
     // Parsing methods
-    bool parsePacket(const uint8_t* packet, size_t packet_size);
-    bool parseMultipleBytes(const uint8_t* data, size_t data_size);
+    // REVIEW: Document what the return bool means
+    bool parse_packet(const uint8_t* packet, size_t packet_size);
+    bool parse_multiple_bytes(const uint8_t* data, size_t data_size);
 
     // ArduPilot integration
     AP_HAL::UARTDriver *uart;
@@ -86,9 +88,13 @@ private:
     static constexpr ConfigMode DEFAULT_CONFIG_MODE = CONFIG_MODE_AHRS;
 
     // Centralized accessor - easy to change to AP_Param later
-    ConfigMode getConfigMode() const {
+    ConfigMode get_config_mode() const {
         return DEFAULT_CONFIG_MODE;  // Future: return _config_mode.get()
     }
+
+    // REVIEW: The three following member variables are accessed both inside the update thread and outside it.
+    // Maybe make them atomic to avoid problems due to concurrent access, or introduce a separate
+    // HAL_Semaphore to protect them?
 
     // ArduPilot integration
     bool setup_complete = false;
@@ -99,6 +105,10 @@ private:
 
     // Core ArduPilot integration methods
     void update_thread();
+
+    // REVIEW: Document what the boolean return means.
+    // REVIEW: And maybe it should only return true if there are more bytes waiting to
+    // be read, since that's the only case when it makes sense to call it again immediately?
     bool check_uart();
 };
 
