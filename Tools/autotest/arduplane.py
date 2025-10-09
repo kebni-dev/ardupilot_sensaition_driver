@@ -3046,9 +3046,10 @@ class AutoTestPlane(vehicle_test_suite.TestSuite):
         self.set_parameters({
             "EAHRS_TYPE": eahrs_type,
             "SERIAL4_PROTOCOL": 36,
-            "SERIAL4_BAUD": 230400,
-            "GPS1_TYPE": 21,
-            "AHRS_EKF_TYPE": 11,
+            "SERIAL4_BAUD": 460800,  # SensAItion requires 460800 baud
+            "GPS1_TYPE": 1,
+            "AHRS_EKF_TYPE": 11,      # Use External AHRS (for full test compatibility)
+            "EAHRS_SENSORS": 14,      # IMU(2) + Baro(4) + Compass(8) = 14
             "INS_GYR_CAL": 1,
         })
         self.reboot_sitl()
@@ -3163,6 +3164,55 @@ class AutoTestPlane(vehicle_test_suite.TestSuite):
     def InertialLabsEAHRS(self):
         '''Test InertialLabs EAHRS support'''
         self.fly_external_AHRS("ILabs", 5, "ap1.txt")
+
+    def SensAItion(self):
+        '''Test SensAItion IMU-only mode - Ultra high-rate 1000Hz configuration'''
+        self.customise_SITL_commandline(["--serial4=sim:SensAItion"])
+
+        self.set_parameters({
+            # External AHRS configuration (IMU-only mode at 1000Hz)
+            "EAHRS_TYPE": 11,         # SensAItion External AHRS type
+            "EAHRS_RATE": 1000,       # Ultra high-rate: 1000Hz IMU packets
+            "EAHRS_SENSORS": 14,      # IMU(2) + Baro(4) + Compass(8) = 14
+            "SERIAL4_PROTOCOL": 36,   # External AHRS protocol
+            "SERIAL4_BAUD": 460800,   # 460800 baud
+            "GPS1_TYPE": 1,           # Use SITL GPS for position data
+            "AHRS_EKF_TYPE": 3,       # Internal EKF3 (fed by external IMU)
+
+            # Ultra high-rate INS filtering
+            "INS_GYRO_FILTER": 188,   # 188Hz gyro filter for 1000Hz input
+            "INS_ACCEL_FILTER": 188,  # 188Hz accel filter for 1000Hz input
+            "INS_GYR_CAL": 1,
+
+            # Disable prearm checks for automated testing
+            "ARMING_CHECK": 0,
+        })
+        self.reboot_sitl()
+        self.delay_sim_time(5)
+
+        self.progress("Running accelcal")
+        self.run_cmd(
+            mavutil.mavlink.MAV_CMD_PREFLIGHT_CALIBRATION,
+            p5=4,
+            timeout=5,
+        )
+
+        # Wait for EKF3 with external IMU to converge
+        expected_flags = (mavutil.mavlink.ESTIMATOR_ATTITUDE |
+                         mavutil.mavlink.ESTIMATOR_VELOCITY_HORIZ |
+                         mavutil.mavlink.ESTIMATOR_VELOCITY_VERT |
+                         mavutil.mavlink.ESTIMATOR_POS_HORIZ_REL |
+                         mavutil.mavlink.ESTIMATOR_POS_HORIZ_ABS |
+                         mavutil.mavlink.ESTIMATOR_POS_VERT_ABS)
+        self.wait_ekf_flags(expected_flags, 0, timeout=60)
+
+        self.arm_vehicle()
+        self.progress("SensAItion IMU 1000Hz: Vehicle armed successfully with EKF3 + external IMU")
+        self.disarm_vehicle(force=True)
+
+    def SensAItionEAHRS(self):
+        '''Test SensAItion AHRS mode with quaternion'''
+        self.fly_external_AHRS("SensAItion", 11, "ap1.txt")
 
     def GpsSensorPreArmEAHRS(self):
         '''Test pre-arm checks related to EAHRS_SENSORS using the MicroStrain7 driver'''
@@ -7813,6 +7863,8 @@ class AutoTestPlane(vehicle_test_suite.TestSuite):
             self.MicroStrainEAHRS5,
             self.MicroStrainEAHRS7,
             self.InertialLabsEAHRS,
+            self.SensAItion,
+            self.SensAItionEAHRS,
             self.GpsSensorPreArmEAHRS,
             self.Deadreckoning,
             self.EKFlaneswitch,
