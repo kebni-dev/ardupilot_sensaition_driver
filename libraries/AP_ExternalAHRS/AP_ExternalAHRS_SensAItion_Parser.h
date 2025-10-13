@@ -36,16 +36,24 @@ public:
     // Constructor
     AP_ExternalAHRS_SensAItion_Parser(ConfigMode mode = ConfigMode::CONFIG_MODE_IMU);
 
-    // Parse multiple bytes from UART stream
-    // When a complete packet is validated, packet_out will point to the buffer and packet_size_out will be set
-    // Returns: true if a complete, validated packet was found
+    /*
+    Parse multiple bytes from UART stream and look for complete packets.
+
+    data: Pointer to first input byte
+    data_size: Size of input buffer
+    packet_out: On success: pointer to first byte of complete packet (after the header byte)
+    packet_size_out: On success: size of complete packet (excluding header and checksum)
+    returns: true if a complete, validated packet was found
+    */
     bool parse_bytes(const uint8_t* data, size_t data_size, const uint8_t*& packet_out, size_t& packet_size_out);
 
-    // Get parser statistics
+    // Get number of valid packets received since last reset
     uint32_t get_valid_packets() const
     {
         return valid_packets;
     }
+
+    // Get number of invalid packets received since last reset
     uint32_t get_parse_errors() const
     {
         return parse_errors;
@@ -67,22 +75,21 @@ private:
         COLLECTING_PACKET
     };
 
-    // Member variables
     ConfigMode config_mode;
-    ParseState parse_state;
-    uint8_t packet_buffer[MAX_PACKET_SIZE];
-    uint16_t packet_buffer_len;
+    ParseState parse_state = ParseState::LOOKING_FOR_HEADER;
 
-    // Statistics
-    uint32_t valid_packets;
-    uint32_t parse_errors;
+    uint8_t packet_buffer[MAX_PACKET_SIZE];
+    uint16_t packet_buffer_len = 0;
+
+    // Statistics since last reset
+    uint32_t valid_packets = 0;
+    uint32_t parse_errors = 0;
 
     // Internal parsing methods
     bool parse_single_byte(uint8_t byte, const uint8_t*& packet_out, size_t& packet_size_out);
-    bool validate_packet(const uint8_t* packet, size_t packet_size);
-    uint8_t calculate_xor_checksum(const uint8_t* data, size_t start, size_t length);
+    bool validate_packet(const uint8_t* packet, size_t packet_size) const;
+    uint8_t calculate_xor_checksum(const uint8_t* data, size_t start, size_t length) const;
 
-    // Get expected packet size for current mode
     size_t get_expected_packet_size() const
     {
         return (config_mode == ConfigMode::CONFIG_MODE_IMU) ? PACKET_SIZE_IMU : PACKET_SIZE_AHRS;

@@ -22,28 +22,33 @@
 #include "AP_ExternalAHRS_backend.h"
 #include "AP_ExternalAHRS_SensAItion_Parser.h"
 
+// Driver for a Kebni SensAItion sensor that provides external sensor data to the EKF
 class AP_ExternalAHRS_SensAItion : public AP_ExternalAHRS_backend
 {
 public:
+    // Constructor
     AP_ExternalAHRS_SensAItion(AP_ExternalAHRS *frontend, AP_ExternalAHRS::state_t &_state);
 
-    // get serial port number for the uart, or -1 if not applicable
+    // Get serial port number for the uart, or -1 if not applicable
     int8_t get_port() const override;
 
-    // accessors for AP_AHRS
+    // Get model/type name
+    const char* get_name() const override;
+
+    // Accessors for AP_AHRS
     bool healthy() const override;
     bool initialised() const override;
     bool pre_arm_check(char *failure_msg, uint8_t failure_msg_len) const override;
     void get_filter_status(nav_filter_status &status) const override;
 
-    // get model/type name
-    const char* get_name() const override;
+    // Check for new data. Not used since all processing happens in a thread.
+    void update() override {};
 
-    void update() override;
-
+    // Return the number of GPS sensors sharing data to AP_GPS.
     uint8_t num_gps_sensors() const override
     {
-        return 0;  // SensAItion provides IMU/AHRS data only (no GPS/INS)
+        // The SensAItion IMU/AHRS models do not have GPS input
+        return 0;
     }
 
     // Configuration modes

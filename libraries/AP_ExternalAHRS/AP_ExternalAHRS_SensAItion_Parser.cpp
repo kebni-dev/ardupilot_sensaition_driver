@@ -93,7 +93,7 @@ bool AP_ExternalAHRS_SensAItion_Parser::parse_single_byte(uint8_t byte, const ui
 }
 
 // Validate a complete packet (size and checksum)
-bool AP_ExternalAHRS_SensAItion_Parser::validate_packet(const uint8_t* packet, size_t packet_size)
+bool AP_ExternalAHRS_SensAItion_Parser::validate_packet(const uint8_t* packet, size_t packet_size) const
 {
     size_t expected_size = get_expected_packet_size();
 
@@ -109,8 +109,7 @@ bool AP_ExternalAHRS_SensAItion_Parser::validate_packet(const uint8_t* packet, s
     return (calculated == received);
 }
 
-// Calculate XOR checksum
-uint8_t AP_ExternalAHRS_SensAItion_Parser::calculate_xor_checksum(const uint8_t* data, size_t start, size_t length)
+uint8_t AP_ExternalAHRS_SensAItion_Parser::calculate_xor_checksum(const uint8_t* data, size_t start, size_t length) const
 {
     uint8_t checksum = 0;
     for (size_t i = start; i < start + length && i < MAX_PACKET_SIZE; i++) {

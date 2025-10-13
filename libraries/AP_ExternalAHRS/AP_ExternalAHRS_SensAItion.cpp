@@ -34,7 +34,6 @@
 
 extern const AP_HAL::HAL &hal;
 
-// Constructor
 AP_ExternalAHRS_SensAItion::AP_ExternalAHRS_SensAItion(AP_ExternalAHRS *_frontend, AP_ExternalAHRS::state_t &_state) :
     AP_ExternalAHRS_backend(_frontend, _state),
     parser(get_config_mode() == ConfigMode::CONFIG_MODE_IMU ?
@@ -54,11 +53,11 @@ AP_ExternalAHRS_SensAItion::AP_ExternalAHRS_SensAItion(AP_ExternalAHRS *_fronten
 
     auto &sm = AP::serialmanager();
     uart = sm.find_serial(AP_SerialManager::SerialProtocol_AHRS, 0);
-    if (!uart) {
-        AP_HAL::panic("SensAItion: No UART configured for AHRS protocol");
-    }
     baudrate = sm.find_baudrate(AP_SerialManager::SerialProtocol_AHRS, 0);
     port_num = sm.find_portnum(AP_SerialManager::SerialProtocol_AHRS, 0);
+    if (!uart || baudrate == 0 || port_num == -1) {
+        AP_HAL::panic("SensAItion: No UART configured for AHRS protocol");
+    }
 
     // Create thread for non-blocking UART processing
     if (!hal.scheduler->thread_create(
@@ -188,6 +187,11 @@ int8_t AP_ExternalAHRS_SensAItion::get_port() const
     return port_num;
 }
 
+const char* AP_ExternalAHRS_SensAItion::get_name() const
+{
+    return "Kebni SensAItion";
+}
+
 bool AP_ExternalAHRS_SensAItion::healthy() const
 {
     uint32_t now_ms = AP_HAL::millis();
@@ -206,11 +210,6 @@ bool AP_ExternalAHRS_SensAItion::pre_arm_check(char *failure_msg, uint8_t failur
         return false;
     }
     return true;
-}
-
-const char* AP_ExternalAHRS_SensAItion::get_name() const
-{
-    return "SensAItion";
 }
 
 void AP_ExternalAHRS_SensAItion::get_filter_status(nav_filter_status &status) const
@@ -237,12 +236,6 @@ void AP_ExternalAHRS_SensAItion::update_thread()
             hal.scheduler->delay(1);
         }
     }
-}
-
-// Main update method, now empty since thread handles everything
-void AP_ExternalAHRS_SensAItion::update()
-{
-    // Thread handles all UART processing
 }
 
 bool AP_ExternalAHRS_SensAItion::check_uart()
