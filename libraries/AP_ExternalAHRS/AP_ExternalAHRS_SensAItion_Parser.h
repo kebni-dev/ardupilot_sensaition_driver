@@ -24,28 +24,52 @@
 #include <stdint.h>
 #include <stddef.h>
 
+#include <AP_Math/AP_Math.h>
+
 class AP_ExternalAHRS_SensAItion_Parser
 {
 public:
-    // Configuration modes
+    // Protocol constant
+    static constexpr int MAX_PACKET_SIZE = 256;
+
+    // Specifies which type of data is read from the sensor
     enum class ConfigMode {
         CONFIG_MODE_IMU = 0,   // IMU only mode (accel, gyro, mag, baro, temp)
         CONFIG_MODE_AHRS = 1   // AHRS mode (IMU + quaternion)
+    };
+
+    enum class MeasurementType {
+        UNINITIALIZED = 0, // No measurements are initialized
+        IMU = 1, // IMU measurements are initialized
+        AHRS = 2, // IMU and AHRS measurements are intialized 
+    };
+
+    // Represents one sample from the sensor
+    struct Measurement {
+        MeasurementType type;
+
+        // Measurements that are available from the IMU sensor:
+        Vector3f acceleration_mss; // (m/s^2)
+        Vector3f angular_velocity_rads; // (rad/s)
+        float temperature_degc; // (degrees C)
+        Vector3f magnetic_field_mgauss; // mgauss
+        float air_pressure_p; // Pascal
+
+        // Only available from the AHRS sensor:
+        Quaternion orientation;
     };
 
     // Constructor
     AP_ExternalAHRS_SensAItion_Parser(ConfigMode mode = ConfigMode::CONFIG_MODE_IMU);
 
     /*
-    Parse multiple bytes from UART stream and look for complete packets.
+    Parse incoming byte stream and extract any complete SensAItion packets.
 
     data: Pointer to first input byte
     data_size: Size of input buffer
-    packet_out: On success: pointer to first byte of complete packet (after the header byte)
-    packet_size_out: On success: size of complete packet (excluding header and checksum)
-    returns: true if a complete, validated packet was found
+    measurement: Contains data on success, otherwise type is set to UNINITIALIZED
     */
-    bool parse_bytes(const uint8_t* data, size_t data_size, const uint8_t*& packet_out, size_t& packet_size_out);
+    void parse_bytes(const uint8_t* data, size_t data_size, Measurement& measurement);
 
     // Get number of valid packets received since last reset
     uint32_t get_valid_packets() const
@@ -54,6 +78,8 @@ public:
     }
 
     // Get number of invalid packets received since last reset
+    // (Byte sequences that start with the header byte and have the right
+    // number of bytes, but do not form a valid packet.)
     uint32_t get_parse_errors() const
     {
         return parse_errors;
@@ -62,13 +88,12 @@ public:
     // Reset parser state
     void reset();
 
-    // Protocol constants (public for driver to use)
+private:
+    // Protocol constants
     static constexpr uint8_t HEADER_BYTE = 0xFA;
-    static constexpr int MAX_PACKET_SIZE = 256;
     static constexpr size_t PACKET_SIZE_IMU = 38;   // 36 data bytes + header + checksum
     static constexpr size_t PACKET_SIZE_AHRS = 54;  // 52 data bytes + header + checksum
 
-private:
     // Packet parsing state machine
     enum class ParseState {
         LOOKING_FOR_HEADER,
@@ -85,12 +110,18 @@ private:
     uint32_t valid_packets = 0;
     uint32_t parse_errors = 0;
 
-    // Internal parsing methods
-    bool parse_single_byte(uint8_t byte, const uint8_t*& packet_out, size_t& packet_size_out);
-    bool validate_packet(const uint8_t* packet, size_t packet_size) const;
+    // Update parser with one byte, return true if this was the last byte of a valid packet
+    bool parse_single_byte(uint8_t byte);
+
+    // Returns true if packet_buffer contains a packet with valid checksum
+    bool buffer_contains_valid_packet() const;
+
+    // Extracts sensor data from (an assumed valid) packet in the packet_buffer
+    void extract_sensor_data(Measurement& measurement) const;
+
     uint8_t calculate_xor_checksum(const uint8_t* data, size_t start, size_t length) const;
 
-    size_t get_expected_packet_size() const
+    size_t expected_packet_size() const
     {
         return (config_mode == ConfigMode::CONFIG_MODE_IMU) ? PACKET_SIZE_IMU : PACKET_SIZE_AHRS;
     }

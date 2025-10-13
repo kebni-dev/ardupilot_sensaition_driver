@@ -51,36 +51,21 @@ public:
         return 0;
     }
 
-    // Configuration modes
-    // CONFIG_MODE_IMU:  Provides accel, gyro, mag, baro (36 data bytes + header + checksum = 38 total)
-    // CONFIG_MODE_AHRS: Provides IMU data + quaternion attitude (52 data bytes + header + checksum = 54 total)
-    // CONFIG_MODE_INS:  Not yet supported
-    //
-    // TODO: Make configurable via parameter
-    enum class ConfigMode {
-        CONFIG_MODE_IMU = 0,   // IMU only mode
-        CONFIG_MODE_AHRS = 1   // AHRS mode
-    };
-
 private:
-    // SensAItion protocol parser
     AP_ExternalAHRS_SensAItion_Parser parser;
 
-    // Extract sensor data and update state
-    bool extract_sensor_data(const uint8_t* packet);
+    // Pre-allocated measurement from parser
+    AP_ExternalAHRS_SensAItion_Parser::Measurement sensor_measurement;
 
     // UART driver and configuration
     AP_HAL::UARTDriver *uart = nullptr;
     uint32_t baudrate = 460800;
     int8_t port_num = -1;
 
-    // Static config for now - will become AP_Param later
-    static constexpr ConfigMode DEFAULT_CONFIG_MODE = ConfigMode::CONFIG_MODE_IMU;
-
     // Centralized accessor - easy to change to AP_Param later
-    ConfigMode get_config_mode() const
+    AP_ExternalAHRS_SensAItion_Parser::ConfigMode get_config_mode() const
     {
-        return DEFAULT_CONFIG_MODE;  // Future: return _config_mode.get()
+        return AP_ExternalAHRS_SensAItion_Parser::ConfigMode::CONFIG_MODE_IMU;
     }
 
     // Thread-shared variables (setup_complete, last_valid_packet_ms, valid_packets)

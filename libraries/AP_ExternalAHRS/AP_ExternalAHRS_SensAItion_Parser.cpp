@@ -13,24 +13,13 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-/*
-  SensAItion Protocol Parser Implementation
-  Pure parsing logic - no ArduPilot dependencies
-*/
-
 #include "AP_ExternalAHRS_SensAItion_Parser.h"
 
-// Constructor
 AP_ExternalAHRS_SensAItion_Parser::AP_ExternalAHRS_SensAItion_Parser(ConfigMode mode) :
-    config_mode(mode),
-    parse_state(ParseState::LOOKING_FOR_HEADER),
-    packet_buffer_len(0),
-    valid_packets(0),
-    parse_errors(0)
+    config_mode(mode)
 {
 }
 
-// Reset parser to initial state
 void AP_ExternalAHRS_SensAItion_Parser::reset()
 {
     parse_state = ParseState::LOOKING_FOR_HEADER;
@@ -39,19 +28,19 @@ void AP_ExternalAHRS_SensAItion_Parser::reset()
     parse_errors = 0;
 }
 
-// Parse multiple bytes from UART stream
-bool AP_ExternalAHRS_SensAItion_Parser::parse_bytes(const uint8_t* data, size_t data_size, const uint8_t*& packet_out, size_t& packet_size_out)
+void AP_ExternalAHRS_SensAItion_Parser::parse_bytes(const uint8_t* data, size_t data_size, Measurement& measurement)
 {
+    measurement.type = MeasurementType::UNINITIALIZED;
+
     for (size_t i = 0; i < data_size; i++) {
-        if (parse_single_byte(data[i], packet_out, packet_size_out)) {
-            return true;  // Found a complete packet
+        if (parse_single_byte(data[i])) {            
+            // Will change to a valid measurement type 
+            extract_sensor_data(measurement);
         }
     }
-    return false;  // No complete packet yet
 }
 
-// Parse a single byte through state machine
-bool AP_ExternalAHRS_SensAItion_Parser::parse_single_byte(uint8_t byte, const uint8_t*& packet_out, size_t& packet_size_out)
+bool AP_ExternalAHRS_SensAItion_Parser::parse_single_byte(uint8_t byte)
 {
     switch (parse_state) {
     case ParseState::LOOKING_FOR_HEADER:
@@ -65,16 +54,10 @@ bool AP_ExternalAHRS_SensAItion_Parser::parse_single_byte(uint8_t byte, const ui
     case ParseState::COLLECTING_PACKET:
         packet_buffer[packet_buffer_len++] = byte;
 
-        size_t expected_size = get_expected_packet_size();
-
-        if (packet_buffer_len == expected_size) {
+        if (packet_buffer_len == expected_packet_size()) {
             // Validate complete packet
-            if (validate_packet(packet_buffer, packet_buffer_len)) {
+            if (buffer_contains_valid_packet()) {
                 valid_packets++;
-                // Return pointer to data portion (skip header byte)
-                packet_out = packet_buffer + 1;
-                // Return data size (exclude header and checksum)
-                packet_size_out = packet_buffer_len - 2;
                 parse_state = ParseState::LOOKING_FOR_HEADER;
                 return true;  // Complete valid packet
             } else {
@@ -92,21 +75,65 @@ bool AP_ExternalAHRS_SensAItion_Parser::parse_single_byte(uint8_t byte, const ui
     return false;
 }
 
-// Validate a complete packet (size and checksum)
-bool AP_ExternalAHRS_SensAItion_Parser::validate_packet(const uint8_t* packet, size_t packet_size) const
+bool AP_ExternalAHRS_SensAItion_Parser::buffer_contains_valid_packet() const
 {
-    size_t expected_size = get_expected_packet_size();
-
     // Validate packet structure
-    if (packet_size != expected_size || packet[0] != HEADER_BYTE) {
+    if (packet_buffer_len != expected_packet_size() || packet_buffer[0] != HEADER_BYTE) {
         return false;
     }
 
     // Validate checksum
-    uint8_t calculated = calculate_xor_checksum(packet, 1, packet_size - 2);
-    uint8_t received = packet[packet_size - 1];
+    uint8_t calculated = calculate_xor_checksum(packet_buffer, 1, packet_buffer_len - 2);
+    uint8_t received = packet_buffer[packet_buffer_len - 1];
 
     return (calculated == received);
+}
+
+void AP_ExternalAHRS_SensAItion_Parser::extract_sensor_data(Measurement& measurement) const
+{
+    // Start parsing after the header byte
+    const uint8_t* packet = packet_buffer + 1;
+
+    // Extract acceleration (µg -> m/s^2)
+    int32_t accel_x_ug = (packet[0]<<24)|(packet[1]<<16)|(packet[2]<<8)|packet[3];
+    int32_t accel_y_ug = (packet[4]<<24)|(packet[5]<<16)|(packet[6]<<8)|packet[7];
+    int32_t accel_z_ug = (packet[8]<<24)|(packet[9]<<16)|(packet[10]<<8)|packet[11];
+    measurement.acceleration_mss = Vector3f(accel_x_ug, accel_y_ug, accel_z_ug) * 1e-6f * GRAVITY_MSS;
+
+    // Extract angular velocity from gyroscope (µdeg/s -> rad/s)
+    int32_t gyro_x_udegs = (packet[12]<<24)|(packet[13]<<16)|(packet[14]<<8)|packet[15];
+    int32_t gyro_y_udegs = (packet[16]<<24)|(packet[17]<<16)|(packet[18]<<8)|packet[19];
+    int32_t gyro_z_udegs = (packet[20]<<24)|(packet[21]<<16)|(packet[22]<<8)|packet[23];
+    Vector3f gyro_degs = Vector3f(gyro_x_udegs, gyro_y_udegs, gyro_z_udegs) * 1e-6;
+    measurement.angular_velocity_rads = Vector3f(radians(gyro_degs.x), radians(gyro_degs.y), radians(gyro_degs.z));
+
+    // Extract and convert temperature (2 bytes, special formula -> degrees C)
+    int16_t temp_raw = (packet[24]<<8)|packet[25];
+    measurement.temperature_degc = static_cast<float>(temp_raw) * 0.008f + 20.0f;
+
+    // Extract field from magnetometer (2 bytes each, already in mgauss)
+    int16_t mag_x_mgauss = (packet[26]<<8)|packet[27];
+    int16_t mag_y_mgauss = (packet[28]<<8)|packet[29];
+    int16_t mag_z_mgauss = (packet[30]<<8)|packet[31];
+    measurement.magnetic_field_mgauss = Vector3f(mag_x_mgauss, mag_y_mgauss, mag_z_mgauss);
+
+    // Extract and scale barometer (4 bytes, units of 0.1 Pa -> Pa)
+    int32_t baro_raw = (packet[32]<<24)|(packet[33]<<16)|(packet[34]<<8)|packet[35];
+    measurement.air_pressure_p = baro_raw * 0.1f;
+
+    // AHRS mode: extract quaternion (raw values are 1e6 times the actual ones)
+    if (config_mode == ConfigMode::CONFIG_MODE_AHRS && packet_buffer_len >= 52) {
+        int32_t quat_w_raw = (packet[36]<<24)|(packet[37]<<16)|(packet[38]<<8)|packet[39];
+        int32_t quat_x_raw = (packet[40]<<24)|(packet[41]<<16)|(packet[42]<<8)|packet[43];
+        int32_t quat_y_raw = (packet[44]<<24)|(packet[45]<<16)|(packet[46]<<8)|packet[47];
+        int32_t quat_z_raw = (packet[48]<<24)|(packet[49]<<16)|(packet[50]<<8)|packet[51];
+        measurement.orientation = Quaternion(quat_w_raw * 1e-6f, quat_x_raw * 1e-6f, 
+            quat_y_raw * 1e-6f, quat_z_raw * 1e-6f);
+
+        measurement.type = MeasurementType::AHRS;
+    } else {
+        measurement.type = MeasurementType::IMU;
+    }
 }
 
 uint8_t AP_ExternalAHRS_SensAItion_Parser::calculate_xor_checksum(const uint8_t* data, size_t start, size_t length) const
