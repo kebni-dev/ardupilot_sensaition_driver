@@ -1,6 +1,6 @@
 
 #include <AP_gtest.h>
-#include <AP_ExternalAHRS/Parser.h>
+#include <AP_ExternalAHRS/AP_ExternalAHRS_SensAItion_Parser.h>
 
 // This line is copied from "test_vector2.cpp" and prevents
 // the linker error "undefined reference to `hal'".
@@ -12,7 +12,7 @@ constexpr float UDEGS_PER_RADS = 1e6f * 180.0f / 3.1415926f; // udeg/s per rad/s
 constexpr float MHPA_PER_PA = 1e3f / 100.0f; // mhPa per Pa
 const float MEASUREMENT_TOLERANCE = 1e-3f;
 
-using Parser = Parser;
+using Parser = AP_ExternalAHRS_SensAItion_Parser;
 }
 
 static void fill_with_int32_in_big_endian_order(uint8_t* data, size_t& location, const int32_t value)
@@ -104,6 +104,14 @@ static Parser::Measurement default_measurement(Parser::MeasurementType type)
     return in;
 }
 
+// Fill with junk to get repeatable unit test behavior
+static void fill_with_junk(uint8_t* buffer, size_t buffer_length)
+{
+    for (size_t i = 0; i < buffer_length; ++i) {
+        buffer[i] = i + 17;
+    }
+}
+
 TEST(SensAItionParser, CanParseValidIMUPacket)
 {
     Parser parser(Parser::ConfigMode::CONFIG_MODE_IMU);
@@ -150,8 +158,11 @@ TEST(SensAItionParser, CanParseValidIMUPacketInParts)
 {
     Parser parser(Parser::ConfigMode::CONFIG_MODE_IMU);
     auto in = default_measurement(Parser::MeasurementType::IMU);
-    uint8_t packet[100];
+    const size_t BUFFER_SIZE = 100;
+    uint8_t packet[BUFFER_SIZE];
     size_t packet_length = 38;
+
+    fill_with_junk(packet, BUFFER_SIZE);
     fill_simulated_packet(packet, packet_length, in);
 
     Parser::Measurement out;
@@ -219,6 +230,8 @@ TEST(SensAItionParser, CanHandleLargeInputBuffer)
     const size_t LARGE_BUFFER_SIZE = 100; // Larger than needed, but less than two packets long
     uint8_t packet[LARGE_BUFFER_SIZE];
     size_t packet_length = 54;
+
+    fill_with_junk(packet, LARGE_BUFFER_SIZE);
     fill_simulated_packet(packet, packet_length, in);
 
     Parser::Measurement out;
@@ -272,10 +285,7 @@ TEST(SensAItionParser, CanParsePacketPrecededByNoise)
     uint8_t input_buffer[INPUT_BUFFER_LENGTH];
     size_t packet_length = 54;
 
-    // Fill the whole buffer with junk to get repeatable test conditions
-    for (size_t i = 0; i < INPUT_BUFFER_LENGTH; ++i) {
-        input_buffer[i] = i + 17;
-    }
+    fill_with_junk(input_buffer, INPUT_BUFFER_LENGTH);
 
     // Add the packet after some initial noise
     fill_simulated_packet(input_buffer + 13, packet_length, in);
