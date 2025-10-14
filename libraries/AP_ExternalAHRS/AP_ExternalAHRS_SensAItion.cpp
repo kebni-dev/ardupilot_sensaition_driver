@@ -36,7 +36,9 @@ extern const AP_HAL::HAL &hal;
 
 AP_ExternalAHRS_SensAItion::AP_ExternalAHRS_SensAItion(AP_ExternalAHRS *_frontend, AP_ExternalAHRS::state_t &_state) :
     AP_ExternalAHRS_backend(_frontend, _state),
-    parser(get_config_mode())
+    parser(option_is_set(AP_ExternalAHRS::OPTIONS::SENSAITION_AHRS) ?
+       AP_ExternalAHRS_SensAItion_Parser::ConfigMode::CONFIG_MODE_AHRS :
+       AP_ExternalAHRS_SensAItion_Parser::ConfigMode::CONFIG_MODE_IMU)
 {
     // SensAItion provides IMU data only (no GPS/position data)
     {
@@ -78,6 +80,7 @@ int8_t AP_ExternalAHRS_SensAItion::get_port() const
 const char* AP_ExternalAHRS_SensAItion::get_name() const
 {
     return "Kebni SensAItion";
+
 }
 
 bool AP_ExternalAHRS_SensAItion::healthy() const
@@ -141,8 +144,6 @@ bool AP_ExternalAHRS_SensAItion::check_uart()
         return false;
     }
 
-    // Read up to MAX_PACKET_SIZE bytes at a time
-    uint8_t buffer[AP_ExternalAHRS_SensAItion_Parser::MAX_PACKET_SIZE];
     n = MIN(n, sizeof(buffer));
     ssize_t nread = uart->read(buffer, n);
 

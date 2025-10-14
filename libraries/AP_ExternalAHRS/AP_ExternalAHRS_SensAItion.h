@@ -57,16 +57,13 @@ private:
     // Pre-allocated measurement from parser
     AP_ExternalAHRS_SensAItion_Parser::Measurement sensor_measurement;
 
+    //Buffer for reading from UART
+    uint8_t buffer[AP_ExternalAHRS_SensAItion_Parser::MAX_PACKET_SIZE];
+
     // UART driver and configuration
     AP_HAL::UARTDriver *uart = nullptr;
     uint32_t baudrate = 460800;
     int8_t port_num = -1;
-
-    // Centralized accessor - easy to change to AP_Param later
-    AP_ExternalAHRS_SensAItion_Parser::ConfigMode get_config_mode() const
-    {
-        return AP_ExternalAHRS_SensAItion_Parser::ConfigMode::CONFIG_MODE_IMU;
-    }
 
     // Thread-shared variables (setup_complete, last_valid_packet_ms, valid_packets)
     // No semaphore needed - uint32_t/bool operations are atomic on ARM
