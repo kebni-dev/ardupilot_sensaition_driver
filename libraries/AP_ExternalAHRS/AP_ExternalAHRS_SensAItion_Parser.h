@@ -71,22 +71,19 @@ public:
     */
     void parse_bytes(const uint8_t* data, size_t data_size, Measurement& measurement);
 
-    // Get number of valid packets received since last reset
+    // Get number of valid packets received
     uint32_t get_valid_packets() const
     {
         return valid_packets;
     }
 
-    // Get number of invalid packets received since last reset
+    // Get number of invalid packets received
     // (Byte sequences that start with the header byte and have the right
     // number of bytes, but do not form a valid packet.)
     uint32_t get_parse_errors() const
     {
         return parse_errors;
     }
-
-    // Reset parser state
-    void reset();
 
 private:
     // Protocol constants
@@ -106,7 +103,7 @@ private:
     uint8_t packet_buffer[MAX_PACKET_SIZE];
     uint16_t packet_buffer_len = 0;
 
-    // Statistics since last reset
+    // Statistics
     uint32_t valid_packets = 0;
     uint32_t parse_errors = 0;
 

@@ -20,14 +20,6 @@ AP_ExternalAHRS_SensAItion_Parser::AP_ExternalAHRS_SensAItion_Parser(ConfigMode 
 {
 }
 
-void AP_ExternalAHRS_SensAItion_Parser::reset()
-{
-    parse_state = ParseState::LOOKING_FOR_HEADER;
-    packet_buffer_len = 0;
-    valid_packets = 0;
-    parse_errors = 0;
-}
-
 void AP_ExternalAHRS_SensAItion_Parser::parse_bytes(const uint8_t* data, size_t data_size, Measurement& measurement)
 {
     measurement.type = MeasurementType::UNINITIALIZED;
