@@ -38,6 +38,11 @@ For an AHRS sensor, send the following command that includes all of the above, t
 ```
 $PKEBW,3,o0001s340030020010000130120110100230220210200330320310300430420410400530520510500910900A10A00B10B00C10C00D30D20D10D04C34C24C14C04D34D24D14D04E34E24E14E04F34F24F14F0x*1A
 ```
+Then save the updated register values to flash and reboot to make them active:
+```
+$PKEBS*4F
+$PKEBB*5E
+```
 
 ## Configuration of ArduPilot
 The following parameters must be set:
