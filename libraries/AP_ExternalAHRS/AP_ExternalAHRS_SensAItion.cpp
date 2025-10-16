@@ -62,7 +62,7 @@ AP_ExternalAHRS_SensAItion::AP_ExternalAHRS_SensAItion(AP_ExternalAHRS *_fronten
     // Create thread for non-blocking UART processing
     if (!hal.scheduler->thread_create(
             FUNCTOR_BIND_MEMBER(&AP_ExternalAHRS_SensAItion::update_thread, void),
-            "AHRS_SensAItion", 2048, AP_HAL::Scheduler::PRIORITY_UART, 0)) {
+            "AHRS_SensAItion", 2048, AP_HAL::Scheduler::PRIORITY_SPI, 0)) {
         GCS_SEND_TEXT(MAV_SEVERITY_ERROR, "SensAItion thread creation failed");
         AP_HAL::panic("SensAItion Failed to start ExternalAHRS update thread");
     }
@@ -123,7 +123,7 @@ void AP_ExternalAHRS_SensAItion::update_thread()
 {
     while (true) {
         if (!check_uart()) {
-            hal.scheduler->delay(1);
+            hal.scheduler->delay_microseconds(100);
         }
     }
 }
