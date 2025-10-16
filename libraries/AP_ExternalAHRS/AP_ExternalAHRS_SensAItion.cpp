@@ -40,16 +40,6 @@ AP_ExternalAHRS_SensAItion::AP_ExternalAHRS_SensAItion(AP_ExternalAHRS *_fronten
        AP_ExternalAHRS_SensAItion_Parser::ConfigMode::CONFIG_MODE_AHRS :
        AP_ExternalAHRS_SensAItion_Parser::ConfigMode::CONFIG_MODE_IMU)
 {
-    // SensAItion provides IMU data only (no GPS/position data)
-    {
-        WITH_SEMAPHORE(state.sem);
-        state.have_location = false;
-        state.have_velocity = false;
-        // Set dummy origin to pass prearm checks - actual origin comes from GPS
-        state.origin = Location{0, 0, 1, Location::AltFrame::ABSOLUTE};
-        state.have_origin = true;
-        state.have_quaternion = false;
-    }
 
     auto &sm = AP::serialmanager();
     uart = sm.find_serial(AP_SerialManager::SerialProtocol_AHRS, 0);
@@ -105,17 +95,17 @@ bool AP_ExternalAHRS_SensAItion::pre_arm_check(char *failure_msg, uint8_t failur
 
 void AP_ExternalAHRS_SensAItion::get_filter_status(nav_filter_status &status) const
 {
-    status = {};
+    WITH_SEMAPHORE(state.sem);
+    memset(&status, 0, sizeof(status));
+
+
     if (healthy()) {
-        status.flags.attitude = true;
-        status.flags.horiz_vel = false;
-        status.flags.vert_vel = false;
-        status.flags.horiz_pos_rel = false; // Are these needed if we don't implement INS right now?
-        status.flags.horiz_pos_abs = false;
-        status.flags.vert_pos = false;
-        status.flags.using_gps = false;
-        status.flags.gps_glitching = false;
         status.flags.initalized = true;
+        state.have_origin = true; // We don't provide origin, but we can't get around the pre-arm check without this. Update pre-arm condition?
+        if (option_is_set(AP_ExternalAHRS::OPTIONS::SENSAITION_AHRS))
+        {
+            status.flags.attitude = true;
+        }
     }
 }
 
@@ -187,7 +177,6 @@ bool AP_ExternalAHRS_SensAItion::check_uart()
         } else {
             state.have_quaternion = false;
         }
-
         return true;
     }
 
