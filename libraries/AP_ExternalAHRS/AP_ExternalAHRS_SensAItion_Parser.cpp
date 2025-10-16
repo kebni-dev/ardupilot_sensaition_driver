@@ -13,6 +13,7 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+#include <stdio.h>
 #include "AP_ExternalAHRS_SensAItion_Parser.h"
 
 AP_ExternalAHRS_SensAItion_Parser::AP_ExternalAHRS_SensAItion_Parser(ConfigMode mode) :
@@ -30,6 +31,22 @@ void AP_ExternalAHRS_SensAItion_Parser::parse_bytes(const uint8_t* data, size_t 
             extract_sensor_data(measurement);
         }
     }
+}
+
+void AP_ExternalAHRS_SensAItion_Parser::handle_invalid_package(void)
+{
+    // Check if any header is in buffer
+    uint8_t *p = (uint8_t *)memchr(&packet_buffer[1], HEADER_BYTE, packet_buffer_len - 1);
+    if(p) {
+        // Found header, copy buffer that header is first, keep collecting data
+        packet_buffer_len = packet_buffer_len - (p - packet_buffer);
+        memmove(&packet_buffer[0], p, packet_buffer_len);
+    }
+    else {
+        // No header found, start looking for headear
+        parse_state = ParseState::LOOKING_FOR_HEADER;
+    }
+    parse_errors++;
 }
 
 bool AP_ExternalAHRS_SensAItion_Parser::parse_single_byte(uint8_t byte)
@@ -53,13 +70,10 @@ bool AP_ExternalAHRS_SensAItion_Parser::parse_single_byte(uint8_t byte)
                 parse_state = ParseState::LOOKING_FOR_HEADER;
                 return true;  // Complete valid packet
             } else {
-                parse_errors++;
-                parse_state = ParseState::LOOKING_FOR_HEADER;
+                handle_invalid_package();
             }
         } else if (packet_buffer_len >= MAX_PACKET_SIZE) {
-            // Prevent buffer overflow
-            parse_errors++;
-            parse_state = ParseState::LOOKING_FOR_HEADER;
+            handle_invalid_package();
         }
         break;
     }

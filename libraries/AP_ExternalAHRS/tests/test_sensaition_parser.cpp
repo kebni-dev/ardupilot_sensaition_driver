@@ -342,4 +342,34 @@ TEST(SensAItionParser, CanParseVaryingValuesInAHRSPacket)
     }
 }
 
+TEST(SensAItionParser, CanParseValidIMUTwoPackets)
+{
+    Parser parser(Parser::ConfigMode::CONFIG_MODE_IMU);
+    auto in = default_measurement(Parser::MeasurementType::IMU);
+    const size_t BUFFER_SIZE = 100;
+    uint8_t packet[BUFFER_SIZE];
+    size_t packet_length = 38;
+
+    fill_with_junk(packet, BUFFER_SIZE);
+    fill_simulated_packet(&packet[0], packet_length, in);
+    fill_simulated_packet(&packet[38], packet_length, in);
+    fill_simulated_packet(&packet[58], packet_length, in);
+
+    Parser::Measurement out[2];
+    for(int i = 0; i < 2; i++) {
+        if(i == 0) {
+            parser.parse_bytes(&packet[i], 50, out[i]);
+        }
+        else {
+            parser.parse_bytes(&packet[50], 100-50, out[i]);
+        }
+        EXPECT_EQ(out[i].type, Parser::MeasurementType::IMU);
+        EXPECT_LT((out[i].acceleration_mss - in.acceleration_mss).length(), MEASUREMENT_TOLERANCE);
+        EXPECT_LT((out[i].angular_velocity_rads - in.angular_velocity_rads).length(), MEASUREMENT_TOLERANCE);
+        EXPECT_LT(abs(out[i].temperature_degc - in.temperature_degc), MEASUREMENT_TOLERANCE);
+        EXPECT_LT((out[i].magnetic_field_mgauss - in.magnetic_field_mgauss).length(), MEASUREMENT_TOLERANCE);
+        EXPECT_LT(abs(out[i].air_pressure_p - in.air_pressure_p), MEASUREMENT_TOLERANCE);
+    }
+}
+
 AP_GTEST_MAIN()

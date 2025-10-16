@@ -107,6 +107,9 @@ private:
     uint32_t valid_packets = 0;
     uint32_t parse_errors = 0;
 
+    // Handles invalid packet, fix packet buffer, package size etc
+    void handle_invalid_package(void);
+    
     // Update parser with one byte, return true if this was the last byte of a valid packet
     bool parse_single_byte(uint8_t byte);
 
