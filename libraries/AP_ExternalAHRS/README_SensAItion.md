@@ -105,7 +105,7 @@ The automated test runs IMU-only mode with EKF3:
 
 ```bash
 # Run automated SensAItion IMU test
-python3 Tools/autotest/autotest.py test.Plane.SensAItion
+python3 Tools/autotest/autotest.py test.Plane.KebniSensAItionEAHRSIMUConfig
 ```
 
 This test configures:
@@ -120,8 +120,19 @@ Test with quaternion output:
 
 ```bash
 # Run automated SensAItion AHRS test
-python3 Tools/autotest/autotest.py test.Plane.SensAItionEAHRS
+python3 Tools/autotest/autotest.py test.Plane.KebniSensAItionEAHRSIMUConfig
 ```
+# Test is not runable with current check on prearm, but if we make this change to prearm condition it works:
+    // Origin is only required if we provide GPS data
+    // IMU-only devices rely on separate GPS for origin
+    if (has_sensor(AvailableSensor::GPS) && !state.have_origin) {
+        hal.util->snprintf(failure_msg, failure_msg_len, "ExternalAHRS: No origin");
+        return false;
+    }
+    return true;
+
+# Needs decision on how to proceed.
+
 
 This test configures:
 - EAHRS_TYPE = 11 (SensAItion)

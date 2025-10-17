@@ -379,6 +379,10 @@ void SITL_State_Common::sim_update(void)
         vectornav->update();
     }
 
+    if (sensaition != nullptr) {
+        sensaition->update();
+    }
+
     if (microstrain5 != nullptr) {
         microstrain5->update();
     }
