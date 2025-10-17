@@ -15,7 +15,9 @@ Connect the SensAItion Data UART pins (TX, RX and ground) to an available serial
 The SensAItion sensor can be mounted in any orientation and the output can be rotated to match the local coordinate system if needed - see the configuration section below. As with any IMU, it is important to avoid excessive vibration levels and it is beneficial to use a mechanical damper between the sensor and the platform frame.
 
 ## Configuration of the sensor
-The SensAItion sensor has a number of configuration registers that control the baudrate, output data format, coordinate system rotation and much more. The configuration registers can be read and written using a text-based protocol via the User UART port as described in the User Manual. But Kebni also provides, on request, the Kebni INSight graphical user interface that helps the user set all configuration registers and can also be used to read and plot sensor data and perform a magnetometer calibration. For complete control of the sensor configuration, it is recommended to use INSight.
+The SensAItion sensor has a number of configuration registers that control the baudrate, output data format, coordinate system rotation and much more. The configuration registers can be read and written using a text-based protocol via the User UART port as described in the User Manual. But Kebni also provides, on request, the Kebni INSight graphical user interface that helps the user set all configuration registers and can also be used to read and plot sensor data and perform a magnetometer calibration. For complete control of the sensor configuration, it is recommended to use INSight. 
+
+Contact [Kebni](https://www.kebni.com/contact/) for access to the User Manual or Kebni INSight.
 
 To get started with the default configuration, it is sufficient to connect to the User UART port of the sensor with a terminal program.
 
@@ -34,9 +36,9 @@ For an IMU sensor, send the following command that sets an output rate of 1000 H
 ```
 $PKEBW,3,o0001s240030020010000130120110100230220210200330320310300430420410400530520510500910900A10A00B10B00C10C00D30D20D10D0x*1B
 ```
-For an AHRS sensor, send the following command that includes all of the above, together with the orientation quaternion in each message:
+For an AHRS sensor, send the following command that includes all of the above but with reduced output rate of 500 Hz, together with the orientation quaternion in each message:
 ```
-$PKEBW,3,o0001s340030020010000130120110100230220210200330320310300430420410400530520510500910900A10A00B10B00C10C00D30D20D10D04C34C24C14C04D34D24D14D04E34E24E14E04F34F24F14F0x*1A
+$PKEBW,3,o0002s340030020010000130120110100230220210200330320310300430420410400530520510500910900A10A00B10B00C10C00D30D20D10D04C34C24C14C04D34D24D14D04E34E24E14E04F34F24F14F0x*19
 ```
 Then save the updated register values to flash and reboot to make them active:
 ```
@@ -51,10 +53,12 @@ Parameter | Value | Comment
 --------- | ----- | ------------
 EAHRS_TYPE | 11 | Use SensAItion as external AHRS
 EAHRS_SENSORS | 14 | Use IMU, barometer and compass
-EAHRS_RATE | 1000 | **Do we need to set this??**
+EAHRS_RATE | 1000 | Requested rate for AHRS device
+EAHRS_OPTIONS | 0 | 0: IMU mode 2: AHRS mode 
 AHRS_EKF_TYPE | 3 | Use ArduPilot's EKF3
 SERIAL2_PROTOCOL | 36 | External AHRS on TELEM 2 (change to whatever port you are using)
 SERIAL2_BAUD | 460 | 460800 baud (change to whatever port you are using)
+ 
 
 Also remember to build the ArduPilot binary with the flags ```--enable-AHRS_EXT --enable-EXTERNALAHRS_COMPASS --enable-EXTERNALAHRS_BARO```.
 
