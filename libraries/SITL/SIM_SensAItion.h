@@ -16,44 +16,34 @@
   Simulate SensAItion serial IMU/AHRS device
   Generates high-rate sensor data for ArduPilot testing
 
-  Supports two modes:
-  - IMU mode: 1000Hz (38 bytes/packet = 304kbps)
-  - AHRS mode: 500Hz (54 bytes/packet = 216kbps)
-
-  Usage example:
-     SERIAL4_PROTOCOL = 36
-     SERIAL4_BAUD = 921600
-     EAHRS_TYPE = 11
-
-     sim_vehicle.py -D --console --map -A "--serial4=sim:SensAItion"
 */
 
 #pragma once
 
-#include "SIM_Aircraft.h"
-
-#include <SITL/SITL.h>
 #include "SIM_SerialDevice.h"
+#include <AP_Common/AP_Common.h> 
 
-namespace SITL
-{
+namespace SITL {
 
-class SensAItion : public SerialDevice
-{
+class SensAItion : public SerialDevice {
 public:
-
     SensAItion();
-
-    // update state
     void update(void);
 
 private:
-    uint32_t last_imu_pkt_us;    // Timing for IMU packets (1000Hz)
-    uint32_t last_ahrs_pkt_us;   // Timing for AHRS packets (500Hz)
+    void send_packet_0_imu(const struct sitl_fdm &fdm);
+    void send_packet_1_orientation(const struct sitl_fdm &fdm);
+    void send_packet_2_ins(const struct sitl_fdm &fdm);
+    uint32_t calculate_itow(uint64_t now_us, uint32_t start_time_utc);
 
-    void send_imu_packet();      // Generate IMU packet (9 sensors × 4 bytes = 36 bytes + header + checksum)
-    void send_ahrs_packet();     // Generate AHRS packet (13 sensors × 4 bytes = 52 bytes + header + checksum)
-    uint8_t calculate_xor_checksum(const uint8_t* data, uint16_t length);
+
+    void write_packet(uint8_t msg_id, const uint8_t* payload, uint16_t length);
+    void write_legacy_packet(const uint8_t* payload, uint16_t length);
+    uint16_t calculate_crc(uint8_t msg_id, const uint8_t* payload, uint16_t length, bool use_id);
+
+    uint32_t last_update_us = 0;
+    uint32_t tick_count = 0; 
+    bool _interleaved_mode = true; // Now mutable, Shall be driven by EAHRS_OPTIONS. TODO
 };
 
-}
+} // namespace SITL

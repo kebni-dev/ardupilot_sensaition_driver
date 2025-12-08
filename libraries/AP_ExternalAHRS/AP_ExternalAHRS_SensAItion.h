@@ -22,61 +22,62 @@
 #include "AP_ExternalAHRS_backend.h"
 #include "AP_ExternalAHRS_SensAItion_Parser.h"
 
-// Driver for a Kebni SensAItion sensor that provides external sensor data to the EKF
 class AP_ExternalAHRS_SensAItion : public AP_ExternalAHRS_backend
 {
 public:
-    // Constructor
     AP_ExternalAHRS_SensAItion(AP_ExternalAHRS *frontend, AP_ExternalAHRS::state_t &_state);
 
-    // Get serial port number for the uart, or -1 if not applicable
+    // Hardware Identification
     int8_t get_port() const override;
-
-    // Get model/type name
     const char* get_name() const override;
 
-    // Accessors for AP_AHRS
+    // Health & Status Interface
     bool healthy() const override;
     bool initialised() const override;
     bool pre_arm_check(char *failure_msg, uint8_t failure_msg_len) const override;
     void get_filter_status(nav_filter_status &status) const override;
+    bool get_variances(float &velVar, float &posVar, float &hgtVar, Vector3f &magVar, float &tasVar) const override;
 
-    // Check for new data. Not used since all processing happens in a thread.
-    void update() override {};
+    // GPS Interface
+    uint8_t num_gps_sensors() const override;
 
-    // Return the number of GPS sensors sharing data to AP_GPS.
-    uint8_t num_gps_sensors() const override
-    {
-        // The SensAItion IMU/AHRS models do not have GPS input
-        return 0;
-    }
+    // Main Loop
+    void update() override {}; 
 
 private:
     AP_ExternalAHRS_SensAItion_Parser parser;
-
-    // Pre-allocated measurement from parser
     AP_ExternalAHRS_SensAItion_Parser::Measurement sensor_measurement;
 
-    //Buffer for reading from UART
-    uint8_t buffer[AP_ExternalAHRS_SensAItion_Parser::MAX_PACKET_SIZE];
-
-    // UART driver and configuration
+    // UART
     AP_HAL::UARTDriver *uart = nullptr;
     uint32_t baudrate = 460800;
     int8_t port_num = -1;
+    uint8_t buffer[AP_ExternalAHRS_SensAItion_Parser::MAX_PACKET_SIZE];
 
-    // Thread-shared variables (setup_complete, last_valid_packet_ms, valid_packets)
-    // No semaphore needed - uint32_t/bool operations are atomic on ARM
+    // Threading
     bool setup_complete = false;
-    uint32_t last_valid_packet_ms = 0;
-    uint32_t valid_packets = 0;
-
-    // Thread processing
     void update_thread();
-
-    // Check UART for available data and process it
-    // Returns: true if data was read and processed, false if no data available or UART not ready
     bool check_uart();
+
+    // Logging
+    void log_ins_status(const AP_ExternalAHRS_SensAItion_Parser::Measurement &meas);
+
+    // Persistent State
+    uint32_t _last_imu_pkt_ms = 0;
+    uint32_t _last_ins_pkt_ms = 0; // Only used in INS mode
+    uint32_t _last_quat_pkt_ms = 0; // Only used in INS mode
+
+    // Last known values from INS packet (Packet 2)
+    uint8_t  _last_alignment_status = 0;
+    uint8_t  _last_gnss1_fix = 0;
+    uint8_t  _last_gnss2_fix = 0;
+    uint8_t  _last_sensor_valid = 0;
+    float    _last_pos_acc = 999.9f;
+    float    _last_vel_acc = 999.9f;
+    uint32_t _last_error_flags = 0;
+
+    // Configuration
+    bool _ins_mode_enabled = false;
 };
 
 #endif  // AP_EXTERNAL_AHRS_SENSAITION_ENABLED

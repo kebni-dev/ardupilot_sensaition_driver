@@ -21,108 +21,121 @@
 
 #pragma once
 
-#include <stdint.h>
-#include <stddef.h>
-
+#include <AP_HAL/AP_HAL.h>
 #include <AP_Math/AP_Math.h>
+#include <AP_Common/Location.h>
 
 class AP_ExternalAHRS_SensAItion_Parser
 {
 public:
-    // Protocol constant
-    static constexpr int MAX_PACKET_SIZE = 256;
-
-    // Specifies which type of data is read from the sensor
+    // Configuration Mode defined in EAHRS_OPTIONS (Bit 1)
     enum class ConfigMode {
-        CONFIG_MODE_IMU = 0,   // IMU only mode (accel, gyro, mag, baro, temp)
-        CONFIG_MODE_AHRS = 1   // AHRS mode (IMU + quaternion)
+        IMU = 0,            // IMU Only Mode (No ID byte, fixed 38 byte packet)
+        INTERLEAVED_INS = 1 // Interleaved Mode (Header -> ID -> Payload)
     };
 
+    // Type of data contained in a decoded Measurement
     enum class MeasurementType {
-        UNINITIALIZED = 0, // No measurements are initialized
-        IMU = 1, // IMU measurements are initialized
-        AHRS = 2, // IMU and AHRS measurements are intialized
+        UNINITIALIZED = 0,
+        IMU,
+        AHRS, // Maps to Packet 1 (Orientation)
+        INS   // Maps to Packet 2 (Navigation)
     };
 
-    // Represents one sample from the sensor
+    // Public Constants (Available to Driver)
+    static const uint16_t MAX_PACKET_SIZE = 256;
+    static const uint8_t HEADER_BYTE = 0xFA;
+
+    // Container for decoded data passed to Backend
     struct Measurement {
         MeasurementType type;
+        uint64_t timestamp_us;
 
-        // Measurements that are available from the IMU sensor:
-        Vector3f acceleration_mss; // (m/s^2)
-        Vector3f angular_velocity_rads; // (rad/s)
-        float temperature_degc; // (degrees C)
-        Vector3f magnetic_field_mgauss; // mgauss
-        float air_pressure_p; // Pascal
+        // Packet 0 (IMU) Data
+        Vector3f acceleration_mss;
+        Vector3f angular_velocity_rads;
+        Vector3f magnetic_field_mgauss;
+        float temperature_degc;
+        float air_pressure_p;
 
-        // Only available from the AHRS sensor:
+        // Packet 1 (Orientation) Data
         Quaternion orientation;
+
+        // Packet 2 (INS) Data
+        Location location;          // Lat/Lon/Alt
+        Vector3f velocity_ned;      // North/East/Down m/s
+        float pos_accuracy_horiz;   // meters
+        float pos_accuracy_vert;    // meters
+        float vel_accuracy;         // m/s
+        
+        // Status & Health Flags
+        uint8_t alignment_status;   // 1 = Align OK
+        uint8_t gnss1_fix;
+        uint8_t gnss2_fix;
+        
+        // In struct Measurement:
+        uint8_t num_sats_gnss1;
+        uint8_t num_sats_gnss2;
+        uint32_t time_itow;
+
+        uint32_t error_flags;       // Bitmask from sensor
+        uint8_t sensor_valid;       // Byte 49 (New in v5)
     };
 
     // Constructor
-    AP_ExternalAHRS_SensAItion_Parser(ConfigMode mode = ConfigMode::CONFIG_MODE_IMU);
+    AP_ExternalAHRS_SensAItion_Parser(ConfigMode mode);
 
-    /*
-    Parse incoming byte stream and extract any complete SensAItion packets.
-
-    data: Pointer to first input byte
-    data_size: Size of input buffer
-    measurement: Contains data on success, otherwise type is set to UNINITIALIZED
-    */
+    // Main public interface
     void parse_bytes(const uint8_t* data, size_t data_size, Measurement& measurement);
-
-    // Get number of valid packets received
-    uint32_t get_valid_packets() const
-    {
-        return valid_packets;
-    }
-
-    // Get number of invalid packets received
-    // (Byte sequences that start with the header byte and have the right
-    // number of bytes, but do not form a valid packet.)
-    uint32_t get_parse_errors() const
-    {
-        return parse_errors;
-    }
-
-private:
-    // Protocol constants
-    static constexpr uint8_t HEADER_BYTE = 0xFA;
-    static constexpr size_t PACKET_SIZE_IMU = 38;   // 36 data bytes + header + checksum
-    static constexpr size_t PACKET_SIZE_AHRS = 54;  // 52 data bytes + header + checksum
-
-    // Packet parsing state machine
-    enum class ParseState {
-        LOOKING_FOR_HEADER,
-        COLLECTING_PACKET
-    };
-
-    ConfigMode config_mode;
-    ParseState parse_state = ParseState::LOOKING_FOR_HEADER;
-
-    uint8_t packet_buffer[MAX_PACKET_SIZE];
-    uint16_t packet_buffer_len = 0;
+    void reset_parser();
 
     // Statistics
+    uint32_t get_parse_errors() const { return parse_errors; }
+    uint32_t get_valid_packets() const { return valid_packets; }
+
+private:
+    // Payload Sizes (Excluding Header, ID, CRC)
+    static const uint8_t PAYLOAD_SIZE_IMU = 36;  // Packet 0
+    static const uint8_t PAYLOAD_SIZE_QUAT = 16; // Packet 1
+    static const uint8_t PAYLOAD_SIZE_INS = 50;  // Packet 2
+
+    // Packet IDs (Interleaved Mode)
+    enum class PacketID : uint8_t {
+        IMU = 0x00,
+        AHRS = 0x01,
+        INS = 0x02,
+        UNKNOWN = 0xFF
+    };
+
+    // Internal State Machine
+    enum class ParseState {
+        WAITING_HEADER,
+        WAITING_ID,
+        COLLECTING_PAYLOAD
+    };
+
+    // Core Logic
+    bool parse_single_byte(uint8_t byte);
+    void handle_invalid_packet(); // Robust error recovery (memmove)
+    bool buffer_contains_valid_packet() const;
+    bool validate_checksum() const;
+    uint8_t calculate_xor_checksum(const uint8_t* data, size_t len) const;
+
+    // Decoders
+    void decode_packet(Measurement& measurement);
+    void decode_imu(const uint8_t* payload, Measurement& measurement);
+    void decode_ahrs(const uint8_t* payload, Measurement& measurement);
+    void decode_ins(const uint8_t* payload, Measurement& measurement);
+
+    // Members
+    ConfigMode config_mode;
+    ParseState parse_state;
+    PacketID current_packet_id;
+    
+    uint8_t packet_buffer[MAX_PACKET_SIZE];
+    size_t packet_buffer_len;
+    size_t target_payload_len;
+
     uint32_t valid_packets = 0;
     uint32_t parse_errors = 0;
-
-    // Handles invalid packet, fix packet buffer, package size etc
-    void handle_invalid_package(void);
-
-    // Update parser with one byte, return true if this was the last byte of a valid packet
-    bool parse_single_byte(uint8_t byte);
-
-    // Returns true if packet_buffer contains a packet with valid checksum
-    bool buffer_contains_valid_packet() const;
-
-    // Extracts sensor data from (an assumed valid) packet in the packet_buffer
-    void extract_sensor_data(Measurement& measurement) const;
-
-    uint8_t calculate_xor_checksum(const uint8_t* data, size_t start, size_t length) const;
-
-    size_t expected_packet_size() const
-    {
-        return (config_mode == ConfigMode::CONFIG_MODE_IMU) ? PACKET_SIZE_IMU : PACKET_SIZE_AHRS;
-    }
 };
