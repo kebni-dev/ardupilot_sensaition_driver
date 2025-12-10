@@ -321,11 +321,17 @@ void AP_ExternalAHRS_SensAItion_Parser::decode_ins(const uint8_t* payload, Measu
 {
     // --- 1. PARSE RAW BYTES (Big-Endian per your snippet style) ---
     // Total Packet Size: 50 Bytes (Indices 0 to 49)
+// Bytes 0-3: Num Sats (Val 43) - 4 Bytes
+    // Manual: "GNSS2 Num Sat GNSS1 Num Sat"
+    // Layout: [GNSS2_Hi] [GNSS2_Lo] [GNSS1_Hi] [GNSS1_Lo]
+    
+    // 1. Extract as 16-bit integers to handle counts correctly
+    uint16_t gnss2_sats_u16 = (uint16_t)((payload[0] << 8) | payload[1]);
+    uint16_t gnss1_sats_u16 = (uint16_t)((payload[2] << 8) | payload[3]);
 
-    // Bytes 0-3: Num Sats (Val 43) - 4 Bytes
-    // Byte 0: GNSS1 Sat Count. Byte 2: GNSS2 Sat Count.
-    measurement.num_sats_gnss1 = payload[0]; // Assuming count is stored in byte 0
-    measurement.num_sats_gnss2 = payload[2]; // Assuming count is stored in byte 2
+    // 2. Assign correctly (Swapping variables to match data)
+    measurement.num_sats_gnss1 = (uint8_t)gnss1_sats_u16; // Was payload[0] (GNSS2 High Byte)
+    measurement.num_sats_gnss2 = (uint8_t)gnss2_sats_u16; // Was payload[2] (GNSS1 High Byte)
 
     // Bytes 4-7: Error Flags (Val 47) - 4 Bytes
     measurement.error_flags = (uint32_t)((payload[4]<<24)|(payload[5]<<16)|(payload[6]<<8)|payload[7]);
@@ -353,11 +359,16 @@ void AP_ExternalAHRS_SensAItion_Parser::decode_ins(const uint8_t* payload, Measu
     // Bytes 34-37: Time iTOW (Val 67) - 4 Bytes (UInt32 ms)
     measurement.time_itow = (uint32_t)((payload[34]<<24)|(payload[35]<<16)|(payload[36]<<8)|payload[37]);
 
-    // Bytes 38-41: GNSS Fix (Val 71) - 4 Bytes (2x UInt16)
-    // Bytes 38-39: GNSS1 Fix (UInt16). Bytes 40-41: GNSS2 Fix (UInt16).
-    uint16_t gnss1_fix_raw = (uint16_t)((payload[38]<<8)|payload[39]);
-    uint16_t gnss2_fix_raw = (uint16_t)((payload[40]<<8)|payload[41]);
+ // Bytes 38-41: GNSS Fix (Val 71) - 4 Bytes (2x UInt16)
+    // Manual: "GNSS2 Fix Type GNSS1 Fix type"
     
+    // 1. Read the first UInt16 -> This is GNSS 2
+    uint16_t gnss2_fix_raw = (uint16_t)((payload[38] << 8) | payload[39]);
+
+    // 2. Read the second UInt16 -> This is GNSS 1
+    uint16_t gnss1_fix_raw = (uint16_t)((payload[40] << 8) | payload[41]);
+    
+    // 3. Assign
     measurement.gnss1_fix = (uint8_t)gnss1_fix_raw;
     measurement.gnss2_fix = (uint8_t)gnss2_fix_raw;
 
