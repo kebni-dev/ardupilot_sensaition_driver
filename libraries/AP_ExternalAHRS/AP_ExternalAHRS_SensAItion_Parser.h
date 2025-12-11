@@ -43,9 +43,10 @@ public:
     };
 
     // Public Constants (Available to Driver)
-    static const uint16_t MAX_PACKET_SIZE = 256;
+    static const uint16_t MAX_PACKET_SIZE = 1024;
     static const uint8_t HEADER_BYTE = 0xFA;
 
+    // Container for decoded data passed to Backend
     // Container for decoded data passed to Backend
     struct Measurement {
         MeasurementType type;
@@ -64,22 +65,28 @@ public:
         // Packet 2 (INS) Data
         Location location;          // Lat/Lon/Alt
         Vector3f velocity_ned;      // North/East/Down m/s
-        float pos_accuracy_horiz;   // meters
-        float pos_accuracy_vert;    // meters
-        float vel_accuracy;         // m/s
+        
+        // Accuracy Metrics (Vectors as requested)
+        // ArduPilot often uses float for horiz/vert, but Vector3f is more flexible
+        // if the sensor provides 3-axis accuracy.
+        // Based on your config (AccLat, AccLon, AccPosD), we have 3 components.
+        Vector3f pos_accuracy;      // X=Lat, Y=Lon, Z=Alt (meters)
+        Vector3f vel_accuracy;      // X=VelN, Y=VelE, Z=VelD (m/s)
         
         // Status & Health Flags
         uint8_t alignment_status;   // 1 = Align OK
         uint8_t gnss1_fix;
         uint8_t gnss2_fix;
         
-        // In struct Measurement:
         uint8_t num_sats_gnss1;
         uint8_t num_sats_gnss2;
-        uint32_t time_itow;
-
+        
+        // Time
+        uint32_t time_itow;         // ms
+        uint16_t gps_week;          // Calculated Week Number
+        
         uint32_t error_flags;       // Bitmask from sensor
-        uint8_t sensor_valid;       // Byte 49 (New in v5)
+        uint8_t sensor_valid;       // Validity bitmask
     };
 
     // Constructor
@@ -88,16 +95,31 @@ public:
     // Main public interface
     void parse_bytes(const uint8_t* data, size_t data_size, Measurement& measurement);
     void reset_parser();
+    // NEW: Stream Processor with Callback
+    // Process buffer and call 'handler' for EVERY valid packet found.
+    template <typename Functor>
+    void parse_stream(const uint8_t* data, size_t data_size, Functor handler) {
+        Measurement m; 
+        for (size_t i = 0; i < data_size; i++) {
+            if (parse_single_byte(data[i])) {
+                decode_packet(m);
+                handler(m);       // <--- Fire the event!
+                reset_parser();   // Reset for next packet in same buffer
+            }
+        }
+    }
 
     // Statistics
     uint32_t get_parse_errors() const { return parse_errors; }
     uint32_t get_valid_packets() const { return valid_packets; }
 
+
+
 private:
     // Payload Sizes (Excluding Header, ID, CRC)
     static const uint8_t PAYLOAD_SIZE_IMU = 36;  // Packet 0
     static const uint8_t PAYLOAD_SIZE_QUAT = 16; // Packet 1
-    static const uint8_t PAYLOAD_SIZE_INS = 50;  // Packet 2
+    static const uint8_t PAYLOAD_SIZE_INS = 69;  // Packet 2
 
     // Packet IDs (Interleaved Mode)
     enum class PacketID : uint8_t {
@@ -126,6 +148,9 @@ private:
     void decode_imu(const uint8_t* payload, Measurement& measurement);
     void decode_ahrs(const uint8_t* payload, Measurement& measurement);
     void decode_ins(const uint8_t* payload, Measurement& measurement);
+
+    //Helpers
+    uint16_t calculate_gps_week(uint16_t year, uint8_t month, uint8_t day);
 
     // Members
     ConfigMode config_mode;
