@@ -3143,7 +3143,8 @@ class AutoTestPlane(vehicle_test_suite.TestSuite):
             "SERIAL4_BAUD": 460800,
             "GPS1_TYPE": 21,
             "AHRS_EKF_TYPE": 11, # Use External Kebni Sensor Fusion and Kalman filter, 11 = SensAItion
-            "INS_GYR_CAL": 1,})
+            "INS_GYR_CAL": 1
+        })
 
         self.reboot_sitl()
         self.delay_sim_time(10)

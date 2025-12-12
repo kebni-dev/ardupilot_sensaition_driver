@@ -70,13 +70,13 @@ bool AP_ExternalAHRS_SensAItion::healthy() const {
     bool is_healthy = true;
     const char* reason = "OK"; 
 
-    if ((now_ms - _last_imu_pkt_ms) > 50) { 
+    if ((now_ms - _last_imu_pkt_ms) > 160) { 
         is_healthy = false;
         reason = "IMU Stale";
     }
 
     if (is_healthy && _ins_mode_enabled) {
-        if ((now_ms - _last_ins_pkt_ms) > 250) { 
+        if ((now_ms - _last_ins_pkt_ms) > 400) { 
             is_healthy = false;
             reason = "INS Stale";
         } else if (!(_last_sensor_valid & 0x01)) {
@@ -238,6 +238,39 @@ void AP_ExternalAHRS_SensAItion::update_thread() {
     }
 }
 
+
+void AP_ExternalAHRS_SensAItion::handle_ins() {
+    AP::ins().handle_external(_ins);
+}
+
+void AP_ExternalAHRS_SensAItion::handle_baro() {
+#if AP_BARO_EXTERNALAHRS_ENABLED    
+    AP::baro().handle_external(_baro);
+#endif
+}
+
+void AP_ExternalAHRS_SensAItion::handle_compass() {
+#if AP_COMPASS_EXTERNALAHRS_ENABLED
+    AP::compass().handle_external(_mag);
+#endif
+}
+
+void AP_ExternalAHRS_SensAItion::handle_gps() {
+    uint8_t instance;
+    if (AP::gps().get_first_external_instance(instance)) {
+        AP::gps().handle_external(_gps, instance);
+    }
+}
+
+
+void AP_ExternalAHRS_SensAItion::update() {
+    WITH_SEMAPHORE(sem_handle);
+    if(valid_ins) handle_ins();
+    if(valid_baro) handle_baro();
+    if(valid_compass) handle_compass();
+    if(valid_gps) handle_gps();
+}; 
+
 bool AP_ExternalAHRS_SensAItion::check_uart() {
     if (!uart) return false;
 
@@ -293,24 +326,27 @@ bool AP_ExternalAHRS_SensAItion::check_uart() {
                     state.gyro = meas.angular_velocity_rads;
                 }
 
-                AP_ExternalAHRS::ins_data_message_t ins;
-                ins.accel = meas.acceleration_mss;
-                ins.gyro = meas.angular_velocity_rads;
-                ins.temperature = meas.temperature_degc;
-                AP::ins().handle_external(ins);
+                {
+                    WITH_SEMAPHORE(sem_handle);
+                    valid_ins = true;
+                    _ins.accel = meas.acceleration_mss;
+                    _ins.gyro = meas.angular_velocity_rads;
+                    _ins.temperature = meas.temperature_degc;
 
 #if AP_COMPASS_EXTERNALAHRS_ENABLED
-                AP_ExternalAHRS::mag_data_message_t mag;
-                mag.field = meas.magnetic_field_mgauss;
-                AP::compass().handle_external(mag);
+                    valid_compass = true;
+                    _mag.field = meas.magnetic_field_mgauss;
 #endif
 #if AP_BARO_EXTERNALAHRS_ENABLED
-                AP_ExternalAHRS::baro_data_message_t baro;
-                baro.instance = 0;
-                baro.pressure_pa = meas.air_pressure_p;
-                baro.temperature = meas.temperature_degc;
-                AP::baro().handle_external(baro);
+                    valid_baro = true;
+                    _baro.instance = 0;
+                    _baro.pressure_pa = meas.air_pressure_p;
+                    _baro.temperature = meas.temperature_degc;
 #endif
+                    //handle_ins();
+                    //handle_compass();
+                    handle_baro();
+                }
                 stats_imu_exec.update_val((double)(AP_HAL::micros() - t_exec_start));
             }
             else if (meas.type == AP_ExternalAHRS_SensAItion_Parser::MeasurementType::AHRS) {
@@ -360,54 +396,59 @@ bool AP_ExternalAHRS_SensAItion::check_uart() {
 
                 log_ins_status(meas);
 
-                AP_ExternalAHRS::gps_data_message_t gps;
-                gps.gps_week = meas.gps_week;
-                gps.ms_tow = meas.time_itow;
-                gps.fix_type = AP_GPS_FixType(meas.gnss1_fix);
-                gps.satellites_in_view = meas.num_sats_gnss1;
-                gps.horizontal_pos_accuracy = _last_h_pos_quality;
-                gps.vertical_pos_accuracy = _last_v_pos_quality;
-                gps.horizontal_vel_accuracy = meas.vel_accuracy.xy().length();
-                gps.latitude = meas.location.lat;
-                gps.longitude = meas.location.lng;
-                gps.msl_altitude = meas.location.alt; 
-                gps.ned_vel_north = meas.velocity_ned.x;
-                gps.ned_vel_east = meas.velocity_ned.y;
-                gps.ned_vel_down = meas.velocity_ned.z;
+                {
+                    WITH_SEMAPHORE(sem_handle);
 
-                uint8_t instance;
-                if (AP::gps().get_first_external_instance(instance)) {
-                    AP::gps().handle_external(gps, instance);
-                } else {
-                    static uint32_t last_nogps = 0;
-                    if (now_ms > 10000 && (now_ms - last_nogps > 5000)) { 
-                        last_nogps = now_ms;
-                        GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "KEBNI: FATAL - No GPS Backend (Type=21) Found!");
+                    valid_gps = true;                
+                    _gps.gps_week = meas.gps_week;
+                    _gps.ms_tow = meas.time_itow;
+                    _gps.fix_type = AP_GPS_FixType(meas.gnss1_fix);
+                    _gps.satellites_in_view = meas.num_sats_gnss1;
+                    _gps.horizontal_pos_accuracy = _last_h_pos_quality;
+                    _gps.vertical_pos_accuracy = _last_v_pos_quality;
+                    _gps.horizontal_vel_accuracy = meas.vel_accuracy.xy().length();
+                    _gps.latitude = meas.location.lat;
+                    _gps.longitude = meas.location.lng;
+                    _gps.msl_altitude = meas.location.alt; 
+                    _gps.ned_vel_north = meas.velocity_ned.x;
+                    _gps.ned_vel_east = meas.velocity_ned.y;
+                    _gps.ned_vel_down = meas.velocity_ned.z;
+
+                    handle_gps();
+                    
+                    uint8_t instance;
+                    if (!AP::gps().get_first_external_instance(instance)) {
+                        static uint32_t last_nogps = 0;
+                        if (now_ms > 10000 && (now_ms - last_nogps > 5000)) { 
+                            last_nogps = now_ms;
+                            GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "KEBNI: FATAL - No GPS Backend (Type=21) Found!");
+                        }
                     }
                 }
-
-                WITH_SEMAPHORE(state.sem);
-                state.location = Location(
-                    meas.location.lat,
-                    meas.location.lng,
-                    meas.location.alt,
-                    Location::AltFrame::ABSOLUTE
-                );
-                state.velocity = meas.velocity_ned;
-                state.have_location = true;
-                state.have_velocity = true;
-                state.last_location_update_us = AP_HAL::micros();
-
-                if (!state.have_origin && meas.alignment_status) {
+                
+                {
                     WITH_SEMAPHORE(state.sem);
-                    state.origin = Location(
-                        meas.location.lat,
-                        meas.location.lng,
-                        meas.location.alt,
-                        Location::AltFrame::ABSOLUTE
-                    );
-                    state.have_origin = true;
-                    GCS_SEND_TEXT(MAV_SEVERITY_NOTICE, "KEBNI: Origin Set.");
+                    state.location = Location(
+                                              meas.location.lat,
+                                              meas.location.lng,
+                                              meas.location.alt,
+                                              Location::AltFrame::ABSOLUTE
+                                              );
+                    state.velocity = meas.velocity_ned;
+                    state.have_location = true;
+                    state.have_velocity = true;
+                    state.last_location_update_us = AP_HAL::micros();
+
+                    if (!state.have_origin && meas.alignment_status) {
+                        state.origin = Location(
+                                                meas.location.lat,
+                                                meas.location.lng,
+                                                meas.location.alt,
+                                                Location::AltFrame::ABSOLUTE
+                                                );
+                        state.have_origin = true;
+                        GCS_SEND_TEXT(MAV_SEVERITY_NOTICE, "KEBNI: Origin Set.");
+                    }
                 }
                 
                 stats_ins_exec.update_val((double)(AP_HAL::micros() - t_exec_start));

@@ -19,6 +19,7 @@
 
 #if AP_EXTERNAL_AHRS_SENSAITION_ENABLED
 
+#include <stdio.h>
 #include "AP_ExternalAHRS_backend.h"
 #include "AP_ExternalAHRS_SensAItion_Parser.h"
 
@@ -42,11 +43,29 @@ public:
     uint8_t num_gps_sensors() const override;
 
     // Main Loop
-    void update() override {}; 
+    void update() override;
 
 private:
+    HAL_Semaphore sem_handle;
+    AP_ExternalAHRS::ins_data_message_t _ins;
+#if AP_COMPASS_EXTERNALAHRS_ENABLED
+    AP_ExternalAHRS::mag_data_message_t _mag;
+#endif
+#if AP_BARO_EXTERNALAHRS_ENABLED
+    AP_ExternalAHRS::baro_data_message_t _baro;
+#endif
+    AP_ExternalAHRS::gps_data_message_t _gps;
+    
     AP_ExternalAHRS_SensAItion_Parser parser;
-    AP_ExternalAHRS_SensAItion_Parser::Measurement sensor_measurement;
+
+    bool valid_ins = false;
+    bool valid_baro = false;
+    bool valid_compass = false;
+    bool valid_gps = false;
+    void handle_ins();
+    void handle_baro();
+    void handle_compass();
+    void handle_gps();
 
     // UART
     AP_HAL::UARTDriver *uart = nullptr;

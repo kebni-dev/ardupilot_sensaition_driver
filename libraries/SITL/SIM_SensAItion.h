@@ -31,11 +31,26 @@ public:
     void update(void);
 
 private:
+    int _tick = 0;
+    int _periodMessage0 = 2;
+    int _phaseMessage0 = 0;
+    int _periodMessage1 = 10;
+    int _phaseMessage1 = 2;
+    int _periodMessage2 = 10;
+    int _phaseMessage2 = 7;
+    
+    uint8_t _buffert[512];
+    int _buffert_cnt = 0;
+
+
     void send_packet_0_imu(const struct sitl_fdm &fdm);
     void send_packet_1_orientation(const struct sitl_fdm &fdm);
     void send_packet_2_ins(const struct sitl_fdm &fdm);
     uint32_t calculate_itow(uint64_t now_us, uint32_t start_time_utc);
 
+
+    void flush_packets();
+    void write_to_autopilot_buf(const char *data, int length);
 
     void write_packet(uint8_t msg_id, const uint8_t* payload, uint16_t length);
     void write_legacy_packet(const uint8_t* payload, uint16_t length);

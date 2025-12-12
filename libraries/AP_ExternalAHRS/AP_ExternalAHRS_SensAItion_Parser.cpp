@@ -13,7 +13,6 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include <stdio.h>
 #include <string.h> // Required for memchr, memmove
 #include "AP_ExternalAHRS_SensAItion_Parser.h"
 #include <AP_HAL/AP_HAL.h>
@@ -385,7 +384,7 @@ void AP_ExternalAHRS_SensAItion_Parser::decode_ins(const uint8_t* payload, Measu
 
     // 40-44: UTC Date/Time
     uint16_t year = (uint16_t)((payload[40]<<8) | payload[41]);
-    uint8_t month = payload[43];
+    uint16_t month = (uint16_t)((payload[42]<<8) | payload[43]);
     uint8_t day = payload[44];
 
     // 45-68: Accuracy Metrics (mm or mm/s)

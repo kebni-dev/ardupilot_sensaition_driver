@@ -24,7 +24,6 @@
 #include <AP_Baro/AP_Baro.h>
 #include <AP_HAL/utility/sparse-endian.h> // Required for put_beXX_ptr
 #include <sys/time.h> // Required for struct timeval
-#include <stdio.h>
 
 using namespace SITL;
 
@@ -33,6 +32,10 @@ using namespace SITL;
 // Factor = 1e6. (NOT RAD_TO_UDEG!)
 static const float DEG_TO_UDEG = 1.0e6f; 
 const float GYRO_NOISE_DEG = 0.02f;
+
+// Baro: SITL provides mhPa
+// std 100 mhPa
+const float BARO_NOISE_MHPA = 100.0f;
 
 // Accel: SITL provides m/s/s. Driver expects ug.
 // GRAVITY_MSS is defined in AP_Math
@@ -91,6 +94,10 @@ SensAItion::SensAItion() : SerialDevice::SerialDevice() {}
 
 void SensAItion::update(void)
 {
+    int tick1kHz = (AP_HAL::micros() + 500) / 1000;
+    if(tick1kHz <= _tick) return;
+    _tick = tick1kHz;
+
     char trash_buf[64];
     read_from_autopilot(trash_buf, sizeof(trash_buf));
 
@@ -98,7 +105,7 @@ void SensAItion::update(void)
     // Wait 2 seconds after boot to allow ArduPilot to initialize 
     // serial ports and parameters before we flood it with data.
     // This prevents race conditions during the reboot test.
-    if (AP_HAL::millis() < 2000) {
+    if (AP_HAL::millis() < 1000) {
         return;
     }
 
@@ -106,34 +113,27 @@ void SensAItion::update(void)
         return;
     }
 
-    // Timestamps for independent scheduling
-    static uint32_t last_imu_pkt_us = 0;
-    static uint32_t last_orient_pkt_us = 0;
-    static uint32_t last_ins_pkt_us = 0;
-
-    uint32_t now = AP_HAL::micros();
     const auto &fdm = _sitl->state;
 
-    // 1. Packet 0: IMU (400Hz -> 2500us)
-    if (now - last_imu_pkt_us >= 2500) {
-        last_imu_pkt_us = now;
+    // 1. Packet 0: IMU
+    if((_tick % _periodMessage0) == _phaseMessage0) {
         send_packet_0_imu(fdm);
     }
-
+    
     // 2. Interleaved-only Packets
     if (_interleaved_mode) {
-        // Packet 1: Orientation (100Hz -> 10000us)
-        if (now - last_orient_pkt_us >= 10000) {
-            last_orient_pkt_us = now;
+
+        // Packet 1: Orientation
+        if((_tick % _periodMessage1) == _phaseMessage1) {
             send_packet_1_orientation(fdm);
         }
 
-        // Packet 2: INS (100Hz -> 10000us)
-        if (now - last_ins_pkt_us >= 10000) {
-            last_ins_pkt_us = now;
+        // Packet 2: INS
+        if((_tick % _periodMessage2) == _phaseMessage2) {
             send_packet_2_ins(fdm);
         }
     }
+    flush_packets();
 }
 
 void SensAItion::send_packet_0_imu(const struct sitl_fdm &fdm)
@@ -162,7 +162,7 @@ void SensAItion::send_packet_0_imu(const struct sitl_fdm &fdm)
 
     // Barometer: Calculate pressure from altitude (Pa to 0.1 Pa units)
     const float pressure_pa = AP_Baro::get_pressure_for_alt_amsl(fdm.altitude);
-    int32_t baro = (int32_t)(pressure_pa * 10.0f);
+    int32_t baro = (int32_t)(pressure_pa * 10.0f + rand_float_noise() * BARO_NOISE_MHPA);
 
     // Periodic status output to verify simulator operation
     static uint32_t imu_count = 0;
@@ -195,9 +195,9 @@ void SensAItion::send_packet_0_imu(const struct sitl_fdm &fdm)
         //     fprintf(stderr, "   Mag(mG): X=%d Y=%d Z=%d\n", (int)mag_x, (int)mag_y, (int)mag_z);
         //     fprintf(stderr, "   Bar(0.1Pa): %d | Temp(raw): %d\n", (int)baro, (int)temperature);
         // }
-        } else {
-            write_legacy_packet(pkt, sizeof(pkt));
-                //--- DETAILED LOGGING (SIM SIDE) ---
+    } else {
+        write_legacy_packet(pkt, sizeof(pkt));
+        //--- DETAILED LOGGING (SIM SIDE) ---
         if (sim_log_counter++ % 400 == 0) {
             fprintf(stderr, "[SIM-OUT] IMU Packet (Legacy Mode: %d)\n", _interleaved_mode);
             fprintf(stderr, "   Acc(ug): X=%d Y=%d Z=%d\n", (int)accel_x, (int)accel_y, (int)accel_z);
@@ -238,8 +238,8 @@ void SensAItion::send_packet_2_ins(const struct sitl_fdm &fdm)
 {
     // --- 1. PREPARE DATA ---
     uint8_t align_status = 1; // 1 = Aligned
-    uint16_t gnss1_fix = 3; // 3D Fix
-    uint16_t gnss2_fix = 3;
+    uint8_t gnss1_fix = 3; // 3D Fix
+    uint8_t gnss2_fix = 3;
     
     uint32_t num_sats = 0x0C0C0C0C; 
     
@@ -263,18 +263,27 @@ void SensAItion::send_packet_2_ins(const struct sitl_fdm &fdm)
     int32_t vel_n = (int32_t)(fdm.speedN * 1000.0f);
     int32_t vel_e = (int32_t)(fdm.speedE * 1000.0f);
     int32_t vel_d = (int32_t)(fdm.speedD * 1000.0f);
-
+ 
     // Altitude (m -> mm)
     int32_t alt_mm = (int32_t)(fdm.altitude * 1000.0);
-
+    
     // Accuracy (mm, mm/s)
-    int32_t pos_acc = 100; // 0.1m
-    int32_t vel_acc = 50;
+    int32_t acc_lat_mm = 100; // 0.1m
+    int32_t acc_lon_mm = 100; // 0.1m
+    int32_t acc_vn_mm = 20;
+    int32_t acc_ve_mm = 20;
+    int32_t acc_vd_mm = 20;
+    int32_t acc_vd_pos_mm = 100;
     uint32_t err_flags = 0;
     uint8_t sensor_valid = 0xFF; // All valid
 
-    // --- 2. PACKING (Big Endian - 50 Bytes) ---
-    uint8_t pkt[50];
+    // Date
+    uint16_t year = 2025;
+    uint16_t month = 12;
+    uint8_t day = 7;
+    
+    // --- 2. PACKING (Big Endian - 69 Bytes) ---
+    uint8_t pkt[69];
     
     // Bytes 0-3: Num Sats (4B)
     put_be32_ptr(&pkt[0], num_sats);
@@ -305,16 +314,23 @@ void SensAItion::send_packet_2_ins(const struct sitl_fdm &fdm)
     // Bytes 34-37: Time iTOW (4B)
     put_be32_ptr(&pkt[34], itow);
 
-    // Bytes 38-41: GNSS Fix (4B - 2x UInt16)
-    put_be16_ptr(&pkt[38], gnss1_fix);
-    put_be16_ptr(&pkt[40], gnss2_fix);
+    // 38-39: GNSS Fix
+    pkt[38] = gnss1_fix;
+    pkt[39] = gnss2_fix;
+    
+    // 40-44: UTC Date/Time
+    put_be16_ptr(&pkt[40], year);
+    put_be16_ptr(&pkt[42], month);
+    pkt[44] = day;
 
-    // Bytes 42-45: Pos Accuracy (4B)
-    put_be32_ptr(&pkt[42], (uint32_t)pos_acc);
-
-    // Bytes 46-49: Vel Accuracy (4B)
-    put_be32_ptr(&pkt[46], (uint32_t)vel_acc);
-
+    // 45-68: Accuracy Metrics (mm or mm/s)
+    put_be32_ptr(&pkt[45], acc_lat_mm);
+    put_be32_ptr(&pkt[49], acc_lon_mm);
+    put_be32_ptr(&pkt[53], acc_vn_mm);
+    put_be32_ptr(&pkt[57], acc_ve_mm);
+    put_be32_ptr(&pkt[61], acc_vd_mm);
+    put_be32_ptr(&pkt[65], acc_vd_pos_mm);
+    
     // --- LOGGING PROBE (SIM SIDE) ---
     // if (sim_log_counter % 100 == 0) { 
     //     fprintf(stderr, "[SIM-OUT] INS Packet (iTOW: %u)\n", itow);
@@ -323,24 +339,38 @@ void SensAItion::send_packet_2_ins(const struct sitl_fdm &fdm)
     //     fprintf(stderr, "   Stat: Align=%d Valid=0x%02X\n", align_status, sensor_valid);
     // }
 
+
     write_packet(0x02, pkt, sizeof(pkt));
+}
+
+
+void SensAItion::flush_packets() {
+    if(_buffert_cnt > 0){
+        write_to_autopilot((const char *)&_buffert, _buffert_cnt);
+        _buffert_cnt = 0;
+    }
+}
+
+void SensAItion::write_to_autopilot_buf(const char *data, int length) {
+    memcpy(&_buffert[_buffert_cnt], data, length);
+    _buffert_cnt += length;
 }
 
 void SensAItion::write_packet(uint8_t msg_id, const uint8_t* payload, uint16_t length) {
     const uint8_t header = 0xFA; 
-    write_to_autopilot((const char *)&header, 1);
-    write_to_autopilot((const char *)&msg_id, 1);
-    write_to_autopilot((const char *)payload, length);
-    uint8_t crc = (uint8_t)calculate_crc(msg_id, payload, length, true);
-    write_to_autopilot((const char *)&crc, 1);
+    write_to_autopilot_buf((const char *)&header, 1);
+    write_to_autopilot_buf((const char *)&msg_id, 1);
+    write_to_autopilot_buf((const char *)payload, length);
+    uint8_t crc = (uint8_t)calculate_crc(msg_id, payload, length, true);    
+    write_to_autopilot_buf((const char *)&crc, 1);
 }
 
 void SensAItion::write_legacy_packet(const uint8_t* payload, uint16_t length) {
     const uint8_t header = 0xFA; 
-    write_to_autopilot((const char *)&header, 1);
-    write_to_autopilot((const char *)payload, length);
+    write_to_autopilot_buf((const char *)&header, 1);
+    write_to_autopilot_buf((const char *)payload, length);
     uint8_t crc = (uint8_t)calculate_crc(0, payload, length, false);
-    write_to_autopilot((const char *)&crc, 1);
+    write_to_autopilot_buf((const char *)&crc, 1);
 }
 
 uint16_t SensAItion::calculate_crc(uint8_t msg_id, const uint8_t* payload, uint16_t length, bool use_id) {
