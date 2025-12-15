@@ -36,10 +36,6 @@ const float GYRO_NOISE_DEG = 0.02f;
 // std 100 mhPa
 const float BARO_NOISE_MHPA = 100.0f;
 
-// Accel: SITL provides m/s/s. Driver expects ug.
-// GRAVITY_MSS is defined in AP_Math
-static const float MSS_TO_UG   = (1.0f / GRAVITY_MSS) * 1.0e6f;
-
 int sim_log_counter = 0;
 static float rand_float_noise() {
     return ((float)rand() / (float)RAND_MAX) * 2.0f - 1.0f;
