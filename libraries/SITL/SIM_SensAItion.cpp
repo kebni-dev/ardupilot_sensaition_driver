@@ -30,7 +30,6 @@ using namespace SITL;
 // Constants
 // Gyro: SITL provides deg/s. Driver expects uDeg/s. 
 // Factor = 1e6. (NOT RAD_TO_UDEG!)
-static const float DEG_TO_UDEG = 1.0e6f; 
 const float GYRO_NOISE_DEG = 0.02f;
 
 // Baro: SITL provides mhPa
