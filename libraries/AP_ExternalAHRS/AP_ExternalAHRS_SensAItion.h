@@ -48,12 +48,8 @@ public:
 private:
     HAL_Semaphore sem_handle;
     AP_ExternalAHRS::ins_data_message_t _ins;
-#if AP_COMPASS_EXTERNALAHRS_ENABLED
     AP_ExternalAHRS::mag_data_message_t _mag;
-#endif
-#if AP_BARO_EXTERNALAHRS_ENABLED
     AP_ExternalAHRS::baro_data_message_t _baro;
-#endif
     AP_ExternalAHRS::gps_data_message_t _gps;
     
     AP_ExternalAHRS_SensAItion_Parser parser;

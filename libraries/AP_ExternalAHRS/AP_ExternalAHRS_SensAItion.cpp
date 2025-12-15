@@ -333,16 +333,14 @@ bool AP_ExternalAHRS_SensAItion::check_uart() {
                     _ins.gyro = meas.angular_velocity_rads;
                     _ins.temperature = meas.temperature_degc;
 
-#if AP_COMPASS_EXTERNALAHRS_ENABLED
                     valid_compass = true;
                     _mag.field = meas.magnetic_field_mgauss;
-#endif
-#if AP_BARO_EXTERNALAHRS_ENABLED
+
                     valid_baro = true;
                     _baro.instance = 0;
                     _baro.pressure_pa = meas.air_pressure_p;
                     _baro.temperature = meas.temperature_degc;
-#endif
+                    
                     //handle_ins();
                     //handle_compass();
                     handle_baro();
