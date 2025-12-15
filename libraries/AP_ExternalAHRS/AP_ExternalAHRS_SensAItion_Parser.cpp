@@ -112,30 +112,6 @@ bool AP_ExternalAHRS_SensAItion_Parser::buffer_contains_valid_packet() const
     uint8_t received = packet_buffer[packet_buffer_len - 1];
 
     if (calculated != received) {
-        // [KEBNI_DEBUG] Deep Inspection on CRC Failure
-        static uint32_t last_crc_debug = 0;
-        if (AP_HAL::millis() - last_crc_debug > 2000) {
-            last_crc_debug = AP_HAL::millis();
-            
-            // Identify what we THOUGHT we were parsing
-            const char* type_str = "UNK";
-            if (current_packet_id == PacketID::IMU) type_str = "IMU";
-            else if (current_packet_id == PacketID::AHRS) type_str = "AHRS";
-            else if (current_packet_id == PacketID::INS) type_str = "INS";
-
-            // Print CRC mismatch
-            GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "KEBNI: CRC FAIL [%s] Calc:0x%02X Recv:0x%02X Len:%u", 
-                type_str, (unsigned)calculated, (unsigned)received, (unsigned)packet_buffer_len);
-
-            // Print Payload Autopsy (First 8 bytes of payload)
-            // Interleaved Payload starts at index 2 (Header + ID)
-            if (packet_buffer_len >= 10) {
-                const uint8_t* p = &packet_buffer[2];
-                GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "KEBNI: PAYLOAD HEAD: %02X %02X %02X %02X %02X %02X %02X %02X",
-                    (unsigned)p[0], (unsigned)p[1], (unsigned)p[2], (unsigned)p[3],
-                    (unsigned)p[4], (unsigned)p[5], (unsigned)p[6], (unsigned)p[7]);
-            }
-        }
         return false;
     }
 
@@ -191,14 +167,6 @@ bool AP_ExternalAHRS_SensAItion_Parser::parse_single_byte(uint8_t byte)
             break;
             
         default:
-            // [KEBNI_DEBUG] Invalid ID Detection
-            {
-                static uint32_t last_id_debug = 0;
-                if (AP_HAL::millis() - last_id_debug > 2000) {
-                    last_id_debug = AP_HAL::millis();
-                    GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "KEBNI: Invalid Packet ID: 0x%02X", (unsigned)byte);
-                }
-            }
             parse_errors++; 
             handle_invalid_packet();
             break;
@@ -216,12 +184,6 @@ bool AP_ExternalAHRS_SensAItion_Parser::parse_single_byte(uint8_t byte)
 
         if (packet_buffer_len >= expected_total_len) {
             if (buffer_contains_valid_packet()) {
-                // [KEBNI_DEBUG] Success Logging
-                static uint32_t last_success_debug = 0;
-                if (current_packet_id == PacketID::INS && AP_HAL::millis() - last_success_debug > 3000) {
-                    last_success_debug = AP_HAL::millis();
-                    GCS_SEND_TEXT(MAV_SEVERITY_INFO, "KEBNI: Got Valid INS Packet (Len: %u)", (unsigned)packet_buffer_len);
-                }
 
                 valid_packets++;
                 return true; 
@@ -315,14 +277,6 @@ void AP_ExternalAHRS_SensAItion_Parser::decode_imu(const uint8_t* payload, Measu
     // Metadata
     measurement.type = MeasurementType::IMU;
     measurement.timestamp_us = AP_HAL::micros64();
-
-    // [KEBNI_DEBUG] Throttled logging for IMU
-    static uint32_t last_imu_print = 0;
-    if (AP_HAL::millis() - last_imu_print > 5000) {
-        last_imu_print = AP_HAL::millis();
-        GCS_SEND_TEXT(MAV_SEVERITY_INFO, "KEBNI: IMU Packet OK. AccZ:%.2f", 
-            (double)measurement.acceleration_mss.z);
-    }
 }
 
 void AP_ExternalAHRS_SensAItion_Parser::decode_ahrs(const uint8_t* payload, Measurement& measurement)
@@ -426,46 +380,7 @@ void AP_ExternalAHRS_SensAItion_Parser::decode_ins(const uint8_t* payload, Measu
     measurement.type = MeasurementType::INS;
     measurement.timestamp_us = AP_HAL::micros64();
 
-    // -------------------------------------------------------------------------
-    // [KEBNI_DEBUG] THE "EVERYTHING" DUMP
-    // -------------------------------------------------------------------------
-    static uint32_t last_full_print = 0;
-    if (AP_HAL::millis() - last_full_print > 3000) {
-        last_full_print = AP_HAL::millis();
-        
-        // 1. TIME & SYNC
-        GCS_SEND_TEXT(MAV_SEVERITY_INFO, "INS TIME: Week:%u iTOW:%u Date:%04u-%02u-%02u", 
-            (unsigned)measurement.gps_week, 
-            (unsigned)measurement.time_itow,
-            (unsigned)year, (unsigned)month, (unsigned)day);
-
-        // 2. STATUS & HEALTH
-        // Valid: 0xFF is good. Align: 1 is good. Fix: 3 is good.
-        GCS_SEND_TEXT(MAV_SEVERITY_INFO, "INS STS: Valid:0x%02X Align:%u Err:0x%X Fix:%u/%u Sats:%u/%u", 
-            (unsigned)measurement.sensor_valid, 
-            (unsigned)measurement.alignment_status,
-            (unsigned)measurement.error_flags,
-            (unsigned)measurement.gnss1_fix, (unsigned)measurement.gnss2_fix,
-            (unsigned)measurement.num_sats_gnss1, (unsigned)measurement.num_sats_gnss2);
-
-        // 3. POSITION (Raw Integers for exact check)
-        GCS_SEND_TEXT(MAV_SEVERITY_INFO, "INS POS: Lat:%ld Lon:%ld Alt:%.2fm", 
-            (long)lat_raw, (long)lon_raw, (double)(alt_raw_mm * 0.001f));
-
-        // 4. VELOCITY
-        GCS_SEND_TEXT(MAV_SEVERITY_INFO, "INS VEL: N:%.2f E:%.2f D:%.2f (m/s)", 
-            (double)measurement.velocity_ned.x,
-            (double)measurement.velocity_ned.y,
-            (double)measurement.velocity_ned.z);
-
-        // 5. ACCURACY
-        // HAcc (Horizontal), VAcc (Vertical), SAcc (Speed)
-        GCS_SEND_TEXT(MAV_SEVERITY_INFO, "INS ACC: Horz:%.2f Vert:%.2f Spd:%.2f (m | m/s)", 
-            (double)measurement.pos_accuracy.x, // Using Lat Acc as proxy for Horizontal
-            (double)measurement.pos_accuracy.z,
-            (double)measurement.vel_accuracy.x); // Using Vel N Acc as proxy for Speed
-    }
-}
+ }
 
 // ---------------------------------------------------------------------------
 // Helper: Calculate GPS Week from UTC Date
