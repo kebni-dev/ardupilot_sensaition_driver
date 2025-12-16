@@ -366,19 +366,6 @@ void AP_ExternalAHRS_SensAItion::log_ins_status(const AP_ExternalAHRS_SensAItion
             state.quat.to_euler(roll_rad, pitch_rad, yaw_rad);
         }
     }
-
-    /*
-    AP::logger().Write("KEB1", "TimeUS,Roll,Pitch,Yaw,Align,Fix1,Fix2,Err,Val", "QfffBHHIB",
-                        AP_HAL::micros64(),
-                        (double)degrees(roll_rad),
-                        (double)degrees(pitch_rad),
-                        (double)degrees(yaw_rad),
-                        (uint8_t)meas.alignment_status,
-                        (uint16_t)meas.gnss1_fix,
-                        (uint16_t)meas.gnss2_fix,
-                        (uint32_t)meas.error_flags,
-                        (uint8_t)meas.sensor_valid);
-    */
 #endif
 }
 
