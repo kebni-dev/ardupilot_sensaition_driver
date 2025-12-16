@@ -193,13 +193,13 @@ void SensAItion::send_packet_0_imu(const struct sitl_fdm &fdm)
     } else {
         write_legacy_packet(pkt, sizeof(pkt));
         //--- DETAILED LOGGING (SIM SIDE) ---
-        if (sim_log_counter++ % 400 == 0) {
-            fprintf(stderr, "[SIM-OUT] IMU Packet (Legacy Mode: %d)\n", _interleaved_mode);
-            fprintf(stderr, "   Acc(ug): X=%d Y=%d Z=%d\n", (int)accel_x, (int)accel_y, (int)accel_z);
-            fprintf(stderr, "   Gyr(ud): X=%d Y=%d Z=%d\n", (int)gyro_x, (int)gyro_y, (int)gyro_z);
-            fprintf(stderr, "   Mag(mG): X=%d Y=%d Z=%d\n", (int)mag_x, (int)mag_y, (int)mag_z);
-            fprintf(stderr, "   Bar(0.1Pa): %d | Temp(raw): %d\n", (int)baro, (int)temperature);
-        }
+        //if (sim_log_counter++ % 400 == 0) {
+        //    fprintf(stderr, "[SIM-OUT] IMU Packet (Legacy Mode: %d)\n", _interleaved_mode);
+        //    fprintf(stderr, "   Acc(ug): X=%d Y=%d Z=%d\n", (int)accel_x, (int)accel_y, (int)accel_z);
+        //    fprintf(stderr, "   Gyr(ud): X=%d Y=%d Z=%d\n", (int)gyro_x, (int)gyro_y, (int)gyro_z);
+        //    fprintf(stderr, "   Mag(mG): X=%d Y=%d Z=%d\n", (int)mag_x, (int)mag_y, (int)mag_z);
+        //    fprintf(stderr, "   Bar(0.1Pa): %d | Temp(raw): %d\n", (int)baro, (int)temperature);
+        //}
     }
     
 }

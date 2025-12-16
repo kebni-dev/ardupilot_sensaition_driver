@@ -367,6 +367,7 @@ void AP_ExternalAHRS_SensAItion::log_ins_status(const AP_ExternalAHRS_SensAItion
         }
     }
 
+    /*
     AP::logger().Write("KEB1", "TimeUS,Roll,Pitch,Yaw,Align,Fix1,Fix2,Err,Val", "QfffBHHIB",
                         AP_HAL::micros64(),
                         (double)degrees(roll_rad),
@@ -377,6 +378,7 @@ void AP_ExternalAHRS_SensAItion::log_ins_status(const AP_ExternalAHRS_SensAItion
                         (uint16_t)meas.gnss2_fix,
                         (uint32_t)meas.error_flags,
                         (uint8_t)meas.sensor_valid);
+    */
 #endif
 }
 
