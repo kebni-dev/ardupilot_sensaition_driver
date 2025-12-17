@@ -3131,34 +3131,10 @@ class AutoTestPlane(vehicle_test_suite.TestSuite):
 
     def KebniSensAItionExternalINS(self):
         '''Test Kebni SensAItion External INS mode. Or in Ardupilot terminology, ExternalAHRS mode.'''
-        eahrs_type = 11  # SensAItion External AHRS type
-
-        """Fly with external AHRS"""
-        self.customise_SITL_commandline(["--serial4=sim:SensAItion"])
         self.set_parameters({
-            "EAHRS_RATE": 400,       # Ultra high-rate: 1000Hz IMU packets
-            "EAHRS_OPTIONS": 2,  # INS mode -> Bit 1 set
-            "EAHRS_TYPE": eahrs_type,
-            "SERIAL4_PROTOCOL": 36,
-            "SERIAL4_BAUD": 460800,
-            "GPS1_TYPE": 21,
-            "AHRS_EKF_TYPE": 11, # Use External Kebni Sensor Fusion and Kalman filter, 11 = SensAItion
-            "INS_GYR_CAL": 1
+            "EAHRS_OPTIONS": 2  # INS mode -> Bit 1 set
         })
-
-        self.reboot_sitl()
-        self.delay_sim_time(10)
-        self.progress("Running accelcal")
-        self.run_cmd(
-            mavutil.mavlink.MAV_CMD_PREFLIGHT_CALIBRATION,
-            p5=4,
-            timeout=5,
-        )
-
-        self.wait_ready_to_arm()
-        self.arm_vehicle()
-        self.fly_mission("ap1.txt")
-        self.disarm_vehicle(force=True)
+        self.fly_external_AHRS("SensAItionINS", 11, "ap1.txt")
 
     def KebniSensAItionExternalIMU(self):
         '''Test Kebni SensAItion External IMU-only mode'''

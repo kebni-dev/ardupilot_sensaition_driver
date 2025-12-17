@@ -262,7 +262,13 @@ SITL::SerialDevice *SITL_State_Common::create_serial_sim(const char *name, const
         if (sensaition != nullptr) {
             AP_HAL::panic("Only one SensAItion at a time");
         }
-        sensaition = NEW_NOTHROW SITL::SensAItion();
+        sensaition = NEW_NOTHROW SITL::SensAItion(false);
+        return sensaition;
+    } else if (streq(name, "SensAItionINS")) {
+        if (sensaition != nullptr) {
+            AP_HAL::panic("Only one SensAItion at a time");
+        }
+        sensaition = NEW_NOTHROW SITL::SensAItion(true);
         return sensaition;
 
 #if AP_SIM_AIS_ENABLED

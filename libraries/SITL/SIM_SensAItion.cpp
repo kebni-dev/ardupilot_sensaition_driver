@@ -85,7 +85,10 @@ static uint32_t get_gps_tow_ms()
     
     return (seconds_in_week * 1000) + ms_part;
 }
-SensAItion::SensAItion() : SerialDevice::SerialDevice() {}
+
+SensAItion::SensAItion(bool interleaved_mode) : SerialDevice::SerialDevice() {
+    _interleaved_mode = interleaved_mode;
+}
 
 void SensAItion::update(void)
 {
@@ -374,3 +377,4 @@ uint16_t SensAItion::calculate_crc(uint8_t msg_id, const uint8_t* payload, uint1
     for (uint16_t i = 0; i < length; i++) crc ^= payload[i];
     return crc;
 }
+

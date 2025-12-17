@@ -27,17 +27,17 @@ namespace SITL {
 
 class SensAItion : public SerialDevice {
 public:
-    SensAItion();
+    SensAItion(bool interleved_mode);
     void update(void);
 
 private:
     int _tick = 0;
-    int _periodMessage0 = 50;
+    int _periodMessage0 = 2;
     int _phaseMessage0 = 0;
-    int _periodMessage1 = 50;
-    int _phaseMessage1 = 15;
-    int _periodMessage2 = 50;
-    int _phaseMessage2 = 30;
+    int _periodMessage1 = 10;
+    int _phaseMessage1 = 0;
+    int _periodMessage2 = 10;
+    int _phaseMessage2 = 5;
     
     uint8_t _buffert[512];
     int _buffert_cnt = 0;
@@ -58,7 +58,8 @@ private:
 
     uint32_t last_update_us = 0;
     uint32_t tick_count = 0; 
-    bool _interleaved_mode = true; // Now mutable, Shall be driven by EAHRS_OPTIONS. TODO
+
+    bool _interleaved_mode = false; // Now mutable, Shall be driven by EAHRS_OPTIONS. TODO
 };
 
 } // namespace SITL

@@ -182,7 +182,6 @@ void AP_ExternalAHRS_SensAItion::update() {
         handle_baro();
         valid_baro = false;
     };
-
     if(valid_compass) handle_compass();
     if(valid_gps) handle_gps();
 }; 
@@ -232,9 +231,11 @@ bool AP_ExternalAHRS_SensAItion::check_uart() {
                     _ins.accel = meas.acceleration_mss;
                     _ins.gyro = meas.angular_velocity_rads;
                     _ins.temperature = meas.temperature_degc;
-
+                    handle_ins();
+                    
                     valid_compass = true;
                     _mag.field = meas.magnetic_field_mgauss;
+                    handle_compass();
 
                     
                     if (!is_equal(_baro.pressure_pa, meas.air_pressure_p) || !is_equal(_baro.temperature, meas.temperature_degc))
@@ -299,7 +300,7 @@ bool AP_ExternalAHRS_SensAItion::check_uart() {
                     _gps.hdop = est_hdop;
                     _gps.vdop = est_vdop;
 
-                    
+                    handle_gps();                    
                 }
                 
                 {
