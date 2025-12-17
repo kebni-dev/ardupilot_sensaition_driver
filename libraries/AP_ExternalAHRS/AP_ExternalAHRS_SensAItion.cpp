@@ -58,9 +58,13 @@ AP_ExternalAHRS_SensAItion::AP_ExternalAHRS_SensAItion(AP_ExternalAHRS *_fronten
     }
 
     if (_ins_mode_enabled) {
-        set_default_sensors(uint16_t(AP_ExternalAHRS::AvailableSensor::GPS) |
+        set_default_sensors(uint16_t(AP_ExternalAHRS::AvailableSensor::IMU) |
+                            uint16_t(AP_ExternalAHRS::AvailableSensor::GPS) |
                             uint16_t(AP_ExternalAHRS::AvailableSensor::BARO) |
                             uint16_t(AP_ExternalAHRS::AvailableSensor::COMPASS));
+    }
+    else {
+        set_default_sensors(uint16_t(AP_ExternalAHRS::AvailableSensor::IMU));
     }
     
     if (!hal.scheduler->thread_create(
