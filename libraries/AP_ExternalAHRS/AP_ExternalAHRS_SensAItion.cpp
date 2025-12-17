@@ -57,6 +57,12 @@ AP_ExternalAHRS_SensAItion::AP_ExternalAHRS_SensAItion(AP_ExternalAHRS *_fronten
         return;
     }
 
+    if (_ins_mode_enabled) {
+        set_default_sensors(uint16_t(AP_ExternalAHRS::AvailableSensor::GPS) |
+                            uint16_t(AP_ExternalAHRS::AvailableSensor::BARO) |
+                            uint16_t(AP_ExternalAHRS::AvailableSensor::COMPASS));
+    }
+    
     if (!hal.scheduler->thread_create(
             FUNCTOR_BIND_MEMBER(&AP_ExternalAHRS_SensAItion::update_thread, void),
             "AHRS_SensAItion", 2048, AP_HAL::Scheduler::PRIORITY_SPI, 0)) {
@@ -175,18 +181,9 @@ void AP_ExternalAHRS_SensAItion::handle_gps() {
 }
 
 
-void AP_ExternalAHRS_SensAItion::update() {
-    WITH_SEMAPHORE(sem_handle);
-    if(valid_ins) handle_ins();
-    if(valid_baro) {
-        handle_baro();
-        valid_baro = false;
-    };
-    if(valid_compass) handle_compass();
-    if(valid_gps) handle_gps();
-}; 
-
 bool AP_ExternalAHRS_SensAItion::check_uart() {
+    WITH_SEMAPHORE(sem_handle);
+    
     if (!uart) return false;
 
     if (!setup_complete) {
@@ -226,21 +223,17 @@ bool AP_ExternalAHRS_SensAItion::check_uart() {
                 }
 
                 {
-                    WITH_SEMAPHORE(sem_handle);
-                    valid_ins = true;
                     _ins.accel = meas.acceleration_mss;
                     _ins.gyro = meas.angular_velocity_rads;
                     _ins.temperature = meas.temperature_degc;
                     handle_ins();
                     
-                    valid_compass = true;
                     _mag.field = meas.magnetic_field_mgauss;
                     handle_compass();
 
                     
                     if (!is_equal(_baro.pressure_pa, meas.air_pressure_p) || !is_equal(_baro.temperature, meas.temperature_degc))
                     {
-                        valid_baro = true;
                         _baro.instance = 0;
                         _baro.pressure_pa = meas.air_pressure_p;
                         _baro.temperature = meas.temperature_degc;
@@ -271,9 +264,6 @@ bool AP_ExternalAHRS_SensAItion::check_uart() {
                 log_ins_status(meas);
 
                 {
-                    WITH_SEMAPHORE(sem_handle);
-
-                    valid_gps = true;                
                     _gps.gps_week = meas.gps_week;
                     _gps.ms_tow = meas.time_itow;
                     _gps.fix_type = AP_GPS_FixType(meas.gnss1_fix);

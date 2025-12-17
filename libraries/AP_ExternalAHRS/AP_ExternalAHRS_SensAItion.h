@@ -43,7 +43,10 @@ public:
     uint8_t num_gps_sensors() const override;
 
     // Main Loop
-    void update() override;
+    void update() override {
+        WITH_SEMAPHORE(sem_handle);
+        check_uart();
+    }
 
 private:
     HAL_Semaphore sem_handle;
@@ -54,10 +57,6 @@ private:
     
     AP_ExternalAHRS_SensAItion_Parser parser;
 
-    bool valid_ins = false;
-    bool valid_baro = false;
-    bool valid_compass = false;
-    bool valid_gps = false;
     void handle_ins();
     void handle_baro();
     void handle_compass();

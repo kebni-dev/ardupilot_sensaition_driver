@@ -3143,7 +3143,6 @@ class AutoTestPlane(vehicle_test_suite.TestSuite):
         self.set_parameters({
             # External AHRS configuration (IMU-only mode at 1000Hz)
             "EAHRS_TYPE": 11,         # SensAItion External AHRS type
-            "EAHRS_RATE": 1000,       # Ultra high-rate: 1000Hz IMU packets
             "EAHRS_SENSORS": 14,      # IMU(2) + Baro(4) + Compass(8) = 14
             "EAHRS_OPTIONS": 0,      # Legacy IMU mode
             "SERIAL4_PROTOCOL": 36,   # External AHRS protocol

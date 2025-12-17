@@ -32,11 +32,11 @@ public:
 
 private:
     int _tick = 0;
-    int _periodMessage0 = 2;
+    int _periodMessage0 = 5;
     int _phaseMessage0 = 0;
-    int _periodMessage1 = 10;
+    int _periodMessage1 = 100;
     int _phaseMessage1 = 0;
-    int _periodMessage2 = 10;
+    int _periodMessage2 = 100;
     int _phaseMessage2 = 5;
     
     uint8_t _buffert[512];
