@@ -30,7 +30,6 @@
 #include <AP_Baro/AP_Baro.h>
 #include <AP_Compass/AP_Compass.h>
 #include <AP_InertialSensor/AP_InertialSensor.h>
-#include <stdio.h>
 
 extern const AP_HAL::HAL &hal;
 
@@ -74,19 +73,23 @@ AP_ExternalAHRS_SensAItion::AP_ExternalAHRS_SensAItion(AP_ExternalAHRS *_fronten
     }
 }
 
-int8_t AP_ExternalAHRS_SensAItion::get_port() const {
+int8_t AP_ExternalAHRS_SensAItion::get_port() const
+{
     return uart ? port_num : -1;
 }
 
-const char* AP_ExternalAHRS_SensAItion::get_name() const {
+const char* AP_ExternalAHRS_SensAItion::get_name() const
+{
     return "Kebni SensAItion";
 }
 
-uint8_t AP_ExternalAHRS_SensAItion::num_gps_sensors() const {
+uint8_t AP_ExternalAHRS_SensAItion::num_gps_sensors() const
+{
     return _ins_mode_enabled ? 1 : 0;
 }
 
-bool AP_ExternalAHRS_SensAItion::healthy() const {
+bool AP_ExternalAHRS_SensAItion::healthy() const
+{
     uint32_t now_ms = AP_HAL::millis();
     bool is_healthy = true;
 
@@ -107,11 +110,13 @@ bool AP_ExternalAHRS_SensAItion::healthy() const {
     return is_healthy;
 }
 
-bool AP_ExternalAHRS_SensAItion::initialised() const {
+bool AP_ExternalAHRS_SensAItion::initialised() const
+{
     return setup_complete;
 }
 
-bool AP_ExternalAHRS_SensAItion::pre_arm_check(char *failure_msg, uint8_t failure_msg_len) const {
+bool AP_ExternalAHRS_SensAItion::pre_arm_check(char *failure_msg, uint8_t failure_msg_len) const
+{
     if (!healthy()) {
         hal.util->snprintf(failure_msg, failure_msg_len, "SensAItion Unhealthy");
         return false;
@@ -127,8 +132,8 @@ bool AP_ExternalAHRS_SensAItion::pre_arm_check(char *failure_msg, uint8_t failur
     return true;
 }
 
-void AP_ExternalAHRS_SensAItion::get_filter_status(nav_filter_status &status) const {
-    WITH_SEMAPHORE(state.sem);
+void AP_ExternalAHRS_SensAItion::get_filter_status(nav_filter_status &status) const
+{
     memset(&status, 0, sizeof(status));
     
     status.flags.initalized = initialised();
@@ -150,42 +155,142 @@ void AP_ExternalAHRS_SensAItion::get_filter_status(nav_filter_status &status) co
 // ---------------------------------------------------------------------------
 // THREAD & PROFILER
 // ---------------------------------------------------------------------------
-void AP_ExternalAHRS_SensAItion::update_thread() {
+void AP_ExternalAHRS_SensAItion::update_thread()
+{
     while (true) {
-        if (!check_uart())
-        {
+        if (!check_uart()) {
             hal.scheduler->delay_microseconds(100);
         }
-
     }
 }
 
-
-void AP_ExternalAHRS_SensAItion::handle_ins() {
-    AP::ins().handle_external(_ins);
-}
-
-void AP_ExternalAHRS_SensAItion::handle_baro() {
-#if AP_BARO_EXTERNALAHRS_ENABLED    
-    AP::baro().handle_external(_baro);
-#endif
-}
-
-void AP_ExternalAHRS_SensAItion::handle_compass() {
+void AP_ExternalAHRS_SensAItion::handle_imu(const AP_ExternalAHRS_SensAItion_Parser::Measurement& meas, uint32_t now_ms)
+{
+    // Time tag
+    _last_imu_pkt_ms = now_ms;
+    
+    // STATE
+    {
+        WITH_SEMAPHORE(state.sem);
+        state.accel = meas.acceleration_mss;
+        state.gyro = meas.angular_velocity_rads;
+    }
+    // INS
+    {
+        _ins.accel = meas.acceleration_mss;
+        _ins.gyro = meas.angular_velocity_rads;
+        _ins.temperature = meas.temperature_degc;
+        //
+        AP::ins().handle_external(_ins);
+    }
+    // COMPASS
 #if AP_COMPASS_EXTERNALAHRS_ENABLED
-    AP::compass().handle_external(_mag);
+    {
+        _mag.field = meas.magnetic_field_mgauss;
+        //
+        AP::compass().handle_external(_mag);
+    }
+#endif    
+    // BARO
+#if AP_BARO_EXTERNALAHRS_ENABLED
+    if (!is_equal(_baro.pressure_pa, meas.air_pressure_p) || !is_equal(_baro.temperature, meas.temperature_degc)) {
+        _baro.instance = 0;
+        _baro.pressure_pa = meas.air_pressure_p;
+        _baro.temperature = meas.temperature_degc;
+        //
+        AP::baro().handle_external(_baro);
+    }
 #endif
 }
 
-void AP_ExternalAHRS_SensAItion::handle_gps() {
-    uint8_t instance;
-    if (AP::gps().get_first_external_instance(instance)) {
-        AP::gps().handle_external(_gps, instance);
+void AP_ExternalAHRS_SensAItion::handle_ahrs(const AP_ExternalAHRS_SensAItion_Parser::Measurement& meas, uint32_t now_ms)
+{
+    // Time tag
+    _last_quat_pkt_ms = now_ms;
+    // STATE
+    {
+        WITH_SEMAPHORE(state.sem);
+        state.quat = meas.orientation;
+        state.have_quaternion = true;
     }
 }
 
+void AP_ExternalAHRS_SensAItion::handle_ins(const AP_ExternalAHRS_SensAItion_Parser::Measurement& meas, uint32_t now_ms) {
+    // Local data
+    _last_ins_pkt_ms = now_ms;
+    _last_alignment_status = meas.alignment_status;
+    _last_sensor_valid = meas.sensor_valid;
+    _last_gnss1_fix = meas.gnss1_fix;
+    _last_gnss2_fix = meas.gnss2_fix;
+    _last_error_flags = meas.error_flags;
+    _last_h_pos_quality = meas.pos_accuracy.xy().length();
+    _last_v_pos_quality = meas.pos_accuracy.z;
+    _last_vel_quality = meas.vel_accuracy.length();
+    // Log
+    log_ins_status(meas);
+    // STATE            
+    {
+        WITH_SEMAPHORE(state.sem);
+        state.location = Location(
+                                  meas.location.lat,
+                                  meas.location.lng,
+                                  meas.location.alt,
+                                  Location::AltFrame::ABSOLUTE
+                                  );
+        state.velocity = meas.velocity_ned;
+        state.have_location = true;
+        state.have_velocity = true;
+        state.last_location_update_us = AP_HAL::micros();
+        
+        if (!state.have_origin && meas.alignment_status) {
+            state.origin = Location(
+                                    meas.location.lat,
+                                    meas.location.lng,
+                                    meas.location.alt,
+                                    Location::AltFrame::ABSOLUTE
+                                    );
+            state.have_origin = true;
+            GCS_SEND_TEXT(MAV_SEVERITY_NOTICE, "KEBNI: Origin Set.");
+        }
+    }
+    // GPS 
+    {
+        _gps.gps_week = meas.gps_week;
+        _gps.ms_tow = meas.time_itow;
+        _gps.fix_type = AP_GPS_FixType(meas.gnss1_fix);
+        _gps.satellites_in_view = meas.num_sats_gnss1;
+        _gps.horizontal_pos_accuracy = _last_h_pos_quality;
+        _gps.vertical_pos_accuracy = _last_v_pos_quality;
+        _gps.horizontal_vel_accuracy = meas.vel_accuracy.xy().length();
+        _gps.latitude = meas.location.lat;
+        _gps.longitude = meas.location.lng;
+        _gps.msl_altitude = meas.location.alt; 
+        _gps.ned_vel_north = meas.velocity_ned.x;
+        _gps.ned_vel_east = meas.velocity_ned.y;
+        _gps.ned_vel_down = meas.velocity_ned.z;
+        // 3. Estimate DOPs (Unitless) using assumed UERE of 3.0m
+        // This answers "What is HDOP/VDOP?"
+        const float ASSUMED_UERE = 3.0f;
+        
+        float est_hdop = _last_h_pos_quality / ASSUMED_UERE;
+        float est_vdop = _last_v_pos_quality / ASSUMED_UERE;
+        
+        // 4. Sanity Clamping (DOP cannot be 0, and rarely < 0.6)
+        if (est_hdop < 0.7f) est_hdop = 0.7f;
+        if (est_vdop < 0.7f) est_vdop = 0.7f;
+        _gps.hdop = est_hdop;
+        _gps.vdop = est_vdop;
 
-bool AP_ExternalAHRS_SensAItion::check_uart() {
+        // Handle
+        uint8_t instance;
+        if (AP::gps().get_first_external_instance(instance)) {
+            AP::gps().handle_external(_gps, instance);
+        }
+    }
+}
+
+bool AP_ExternalAHRS_SensAItion::check_uart()
+{
     WITH_SEMAPHORE(sem_handle);
     
     if (!uart) return false;
@@ -213,115 +318,16 @@ bool AP_ExternalAHRS_SensAItion::check_uart() {
             if (meas.type == AP_ExternalAHRS_SensAItion_Parser::MeasurementType::UNINITIALIZED) {
                 return;
             }
-
             parsed_any = true;
-            
+            //
             if (meas.type == AP_ExternalAHRS_SensAItion_Parser::MeasurementType::IMU) {
-                
-                _last_imu_pkt_ms = now_ms;
-
-                {
-                    WITH_SEMAPHORE(state.sem);
-                    state.accel = meas.acceleration_mss;
-                    state.gyro = meas.angular_velocity_rads;
-                }
-
-                {
-                    _ins.accel = meas.acceleration_mss;
-                    _ins.gyro = meas.angular_velocity_rads;
-                    _ins.temperature = meas.temperature_degc;
-                    handle_ins();
-                    
-                    _mag.field = meas.magnetic_field_mgauss;
-                    handle_compass();
-
-                    
-                    if (!is_equal(_baro.pressure_pa, meas.air_pressure_p) || !is_equal(_baro.temperature, meas.temperature_degc))
-                    {
-                        _baro.instance = 0;
-                        _baro.pressure_pa = meas.air_pressure_p;
-                        _baro.temperature = meas.temperature_degc;
-                        handle_baro();
-                    }
-                }
+                handle_imu(meas, now_ms);
             }
             else if (meas.type == AP_ExternalAHRS_SensAItion_Parser::MeasurementType::AHRS) {
-                _last_quat_pkt_ms = now_ms;
-                WITH_SEMAPHORE(state.sem);
-                state.quat = meas.orientation;
-                state.have_quaternion = true;
-                
+                handle_ahrs(meas, now_ms);
             }
             else if (meas.type == AP_ExternalAHRS_SensAItion_Parser::MeasurementType::INS) {
-
-                _last_ins_pkt_ms = now_ms;
-                _last_alignment_status = meas.alignment_status;
-                _last_sensor_valid = meas.sensor_valid;
-                _last_gnss1_fix = meas.gnss1_fix;
-                _last_gnss2_fix = meas.gnss2_fix;
-                _last_error_flags = meas.error_flags;
-                _last_h_pos_quality = meas.pos_accuracy.xy().length();
-                _last_v_pos_quality = meas.pos_accuracy.z;
-                _last_vel_quality = meas.vel_accuracy.length();
-
-
-                log_ins_status(meas);
-
-                {
-                    _gps.gps_week = meas.gps_week;
-                    _gps.ms_tow = meas.time_itow;
-                    _gps.fix_type = AP_GPS_FixType(meas.gnss1_fix);
-                    _gps.satellites_in_view = meas.num_sats_gnss1;
-                    _gps.horizontal_pos_accuracy = _last_h_pos_quality;
-                    _gps.vertical_pos_accuracy = _last_v_pos_quality;
-                    _gps.horizontal_vel_accuracy = meas.vel_accuracy.xy().length();
-                    _gps.latitude = meas.location.lat;
-                    _gps.longitude = meas.location.lng;
-                    _gps.msl_altitude = meas.location.alt; 
-                    _gps.ned_vel_north = meas.velocity_ned.x;
-                    _gps.ned_vel_east = meas.velocity_ned.y;
-                    _gps.ned_vel_down = meas.velocity_ned.z;
-                    // 3. Estimate DOPs (Unitless) using assumed UERE of 3.0m
-                    // This answers "What is HDOP/VDOP?"
-                    const float ASSUMED_UERE = 3.0f;
-
-                    float est_hdop = _last_h_pos_quality / ASSUMED_UERE;
-                    float est_vdop = _last_v_pos_quality / ASSUMED_UERE;
-
-                    // 4. Sanity Clamping (DOP cannot be 0, and rarely < 0.6)
-                    if (est_hdop < 0.7f) est_hdop = 0.7f;
-                    if (est_vdop < 0.7f) est_vdop = 0.7f;
-                    _gps.hdop = est_hdop;
-                    _gps.vdop = est_vdop;
-
-                    handle_gps();                    
-                }
-                
-                {
-                    WITH_SEMAPHORE(state.sem);
-                    state.location = Location(
-                                              meas.location.lat,
-                                              meas.location.lng,
-                                              meas.location.alt,
-                                              Location::AltFrame::ABSOLUTE
-                                              );
-                    state.velocity = meas.velocity_ned;
-                    state.have_location = true;
-                    state.have_velocity = true;
-                    state.last_location_update_us = AP_HAL::micros();
-
-                    if (!state.have_origin && meas.alignment_status) {
-                        state.origin = Location(
-                                                meas.location.lat,
-                                                meas.location.lng,
-                                                meas.location.alt,
-                                                Location::AltFrame::ABSOLUTE
-                                                );
-                        state.have_origin = true;
-                        GCS_SEND_TEXT(MAV_SEVERITY_NOTICE, "KEBNI: Origin Set.");
-                    }
-                }
-                
+                handle_ins(meas, now_ms);
             }
         }); 
     }
@@ -331,8 +337,6 @@ bool AP_ExternalAHRS_SensAItion::check_uart() {
 
 bool AP_ExternalAHRS_SensAItion::get_variances(float &velVar, float &posVar, float &hgtVar, Vector3f &magVar, float &tasVar) const
 {
-    WITH_SEMAPHORE(state.sem);
-    
     if (_ins_mode_enabled && _last_alignment_status == 1) {
         posVar = _last_h_pos_quality * pos_gate_scale;
         velVar = _last_vel_quality * vel_gate_scale;

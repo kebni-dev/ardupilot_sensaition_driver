@@ -19,7 +19,6 @@
 
 #if AP_EXTERNAL_AHRS_SENSAITION_ENABLED
 
-#include <stdio.h>
 #include "AP_ExternalAHRS_backend.h"
 #include "AP_ExternalAHRS_SensAItion_Parser.h"
 
@@ -57,10 +56,9 @@ private:
     
     AP_ExternalAHRS_SensAItion_Parser parser;
 
-    void handle_ins();
-    void handle_baro();
-    void handle_compass();
-    void handle_gps();
+    void handle_imu(const AP_ExternalAHRS_SensAItion_Parser::Measurement& meas, uint32_t now_ms);
+    void handle_ahrs(const AP_ExternalAHRS_SensAItion_Parser::Measurement& meas, uint32_t now_ms);
+    void handle_ins(const AP_ExternalAHRS_SensAItion_Parser::Measurement& meas, uint32_t now_ms);
 
     // UART
     AP_HAL::UARTDriver *uart = nullptr;
