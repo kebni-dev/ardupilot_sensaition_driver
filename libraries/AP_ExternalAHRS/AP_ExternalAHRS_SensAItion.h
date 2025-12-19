@@ -22,6 +22,10 @@
 #include "AP_ExternalAHRS_backend.h"
 #include "AP_ExternalAHRS_SensAItion_Parser.h"
 
+/*
+This class is the interface to Kebni's SensAItion range of inertial navigation
+sensors, which can feed raw sensor data and/or a sensor fusion solution.
+*/
 class AP_ExternalAHRS_SensAItion : public AP_ExternalAHRS_backend
 {
 public:
@@ -43,11 +47,15 @@ public:
 
     // Main Loop
     void update() override {
+        // REVIEW: We take the semaphore here, then again in check_uart(). Skip it here?
         WITH_SEMAPHORE(sem_handle);
         check_uart();
     }
 
 private:
+    // REVIEW: The semaphore is used to protect all member variables that can be read/written
+    // from inside the thread that we start (which calls update_thread()).
+    // We should group those member variables to clarify the protection scope of the semaphore.
     HAL_Semaphore sem_handle;
     AP_ExternalAHRS::ins_data_message_t _ins;
     AP_ExternalAHRS::mag_data_message_t _mag;

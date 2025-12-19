@@ -141,7 +141,7 @@ public:
     } baro_data_message_t;
 
     typedef struct {
-        Vector3f field;
+        Vector3f field; // Magnetic flux density (mgauss)
     } mag_data_message_t;
 
     typedef struct {

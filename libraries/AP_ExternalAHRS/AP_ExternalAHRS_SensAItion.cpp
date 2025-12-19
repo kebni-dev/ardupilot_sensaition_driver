@@ -90,6 +90,10 @@ uint8_t AP_ExternalAHRS_SensAItion::num_gps_sensors() const
 
 bool AP_ExternalAHRS_SensAItion::healthy() const
 {
+    // REVIEW: _last_imu_pkt_ms and similar are changed inside the thread,
+    // so we should not access them without protection.
+    WITH_SEMAPHORE(sem_handle);
+
     uint32_t now_ms = AP_HAL::millis();
     bool is_healthy = true;
 
@@ -98,9 +102,10 @@ bool AP_ExternalAHRS_SensAItion::healthy() const
     }
 
     if (is_healthy && _ins_mode_enabled) {
+        const bool imu_available = _last_sensor_valid & 0x01;
         if ((now_ms - _last_ins_pkt_ms) > 400) { 
             is_healthy = false;
-        } else if (!(_last_sensor_valid & 0x01)) {
+        } else if (!imu_available) {
             is_healthy = false;
         } else if (_last_gnss1_fix < 3) {
             is_healthy = false;
@@ -112,11 +117,13 @@ bool AP_ExternalAHRS_SensAItion::healthy() const
 
 bool AP_ExternalAHRS_SensAItion::initialised() const
 {
+    WITH_SEMAPHORE(sem_handle);
     return setup_complete;
 }
 
 bool AP_ExternalAHRS_SensAItion::pre_arm_check(char *failure_msg, uint8_t failure_msg_len) const
 {
+    WITH_SEMAPHORE(sem_handle);
     if (!healthy()) {
         hal.util->snprintf(failure_msg, failure_msg_len, "SensAItion Unhealthy");
         return false;
@@ -137,7 +144,9 @@ void AP_ExternalAHRS_SensAItion::get_filter_status(nav_filter_status &status) co
     memset(&status, 0, sizeof(status));
     
     status.flags.initalized = initialised();
+
     if (healthy()) {
+        WITH_SEMAPHORE(sem_handle);
         if (_ins_mode_enabled && _last_alignment_status == 1) {
             status.flags.attitude = true;
             status.flags.horiz_pos_abs = true;
@@ -193,6 +202,9 @@ void AP_ExternalAHRS_SensAItion::handle_imu(const AP_ExternalAHRS_SensAItion_Par
 #endif    
     // BARO
 #if AP_BARO_EXTERNALAHRS_ENABLED
+
+    // REVIEW: This reacts to differences within machine precision. Maybe we should set our own 
+    // tolerances that are physically motivated? Such as ~10 Pa and 0.5 deg C.
     if (!is_equal(_baro.pressure_pa, meas.air_pressure_p) || !is_equal(_baro.temperature, meas.temperature_degc)) {
         _baro.instance = 0;
         _baro.pressure_pa = meas.air_pressure_p;
@@ -256,14 +268,18 @@ void AP_ExternalAHRS_SensAItion::handle_ins(const AP_ExternalAHRS_SensAItion_Par
     // GPS 
     {
         _gps.gps_week = meas.gps_week;
-        _gps.ms_tow = meas.time_itow;
+        _gps.ms_tow = meas.time_itow_ms;
         _gps.fix_type = AP_GPS_FixType(meas.gnss1_fix);
         _gps.satellites_in_view = meas.num_sats_gnss1;
         _gps.horizontal_pos_accuracy = _last_h_pos_quality;
         _gps.vertical_pos_accuracy = _last_v_pos_quality;
         _gps.horizontal_vel_accuracy = meas.vel_accuracy.xy().length();
+
         _gps.latitude = meas.location.lat;
         _gps.longitude = meas.location.lng;
+
+        // REVIEW: SensAItion reports altitude relative to WGS84, not MSL.
+        // Does it need conversion, or can we use it as is?
         _gps.msl_altitude = meas.location.alt; 
         _gps.ned_vel_north = meas.velocity_ned.x;
         _gps.ned_vel_east = meas.velocity_ned.y;
@@ -337,6 +353,7 @@ bool AP_ExternalAHRS_SensAItion::check_uart()
 
 bool AP_ExternalAHRS_SensAItion::get_variances(float &velVar, float &posVar, float &hgtVar, Vector3f &magVar, float &tasVar) const
 {
+    WITH_SEMAPHORE(sem_handle);
     if (_ins_mode_enabled && _last_alignment_status == 1) {
         posVar = _last_h_pos_quality * pos_gate_scale;
         velVar = _last_vel_quality * vel_gate_scale;
