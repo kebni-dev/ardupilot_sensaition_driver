@@ -3898,7 +3898,8 @@ class AutoTestCopter(vehicle_test_suite.TestSuite):
         })
 
         self.context_push()
-        self.set_parameter("ARMING_CHECK", 1 << 3)
+        # enable only GPS arming check during ordering test
+        self.set_parameter("ARMING_SKIPCHK", ~(1 << 3))
         self.context_collect('STATUSTEXT')
 
         self.reboot_sitl()
@@ -3972,7 +3973,7 @@ class AutoTestCopter(vehicle_test_suite.TestSuite):
                 self.context_stop_collecting('STATUSTEXT')
         self.progress("############################### All GPS Order Cases Tests Passed")
         self.progress("############################### Test Healthy Prearm check")
-        self.set_parameter("ARMING_CHECK", 1)
+        self.set_parameter("ARMING_SKIPCHK", 0)
         self.stop_sup_program(instance=0)
         self.start_sup_program(instance=0, args="-M")
         self.stop_sup_program(instance=1)
@@ -8949,16 +8950,6 @@ class AutoTestCopter(vehicle_test_suite.TestSuite):
         })
         self.reboot_sitl()
 
-        # turn off GPS arming checks.  This may be considered a
-        # bug that we need to do this.
-        old_arming_check = int(self.get_parameter("ARMING_CHECK"))
-        if old_arming_check == 1:
-            old_arming_check = 1 ^ 25 - 1
-        new_arming_check = int(old_arming_check) & ~(1 << 3)
-        self.set_parameter("ARMING_CHECK", new_arming_check)
-
-        self.reboot_sitl()
-
         # require_absolute=True infers a GPS is present
         self.wait_ready_to_arm(require_absolute=False)
 
@@ -10985,7 +10976,7 @@ class AutoTestCopter(vehicle_test_suite.TestSuite):
         self.wait_gps_disable(position_vertical=True)
 
         # turn off arming checks (mandatory arming checks will still be run)
-        self.set_parameter("ARMING_CHECK", 0)
+        self.set_parameter("ARMING_SKIPCHK", -1)
 
         # delay 12 sec to allow EKF to lose altitude estimate
         self.delay_sim_time(12)
@@ -11153,7 +11144,7 @@ class AutoTestCopter(vehicle_test_suite.TestSuite):
         new_onboard_logs = sorted(self.log_list())
 
         log_difference = [x for x in new_onboard_logs if x not in old_onboard_logs]
-        return log_difference[2]
+        return log_difference[1] # index depends on the reboots and ordering thereof in BeaconPosition!
 
     def test_replay_optical_flow_bit(self):
         self.set_parameters({
@@ -13403,7 +13394,7 @@ class AutoTestCopter(vehicle_test_suite.TestSuite):
 
     def BrakeZ(self):
         '''check jerk limit correct in Brake mode'''
-        self.set_parameter('PSC_JERK_Z', 3)
+        self.set_parameter('PSC_JERK_D', 3)
         self.takeoff(50, mode='GUIDED')
         vx, vy, vz_up = (0, 0, -1)
         self.test_guided_local_velocity_target(vx=vx, vy=vy, vz_up=vz_up, timeout=10)
@@ -13779,7 +13770,7 @@ class AutoTestCopter(vehicle_test_suite.TestSuite):
             "RC7_OPTION": 220,  # RC7 used for second param tuning
             "RC7_MIN": RC7_MIN,
             "RC7_MAX": RC7_MAX,
-            "TUNE2": 28,        # PSC_VELXY_I
+            "TUNE2": 28,        # PSC_NE_VEL_I
             "TUNE2_MIN":  TUNE2_MIN,
             "TUNE2_MAX":  TUNE2_MAX,
         })
@@ -13805,18 +13796,18 @@ class AutoTestCopter(vehicle_test_suite.TestSuite):
 
         self.set_rc(7, RC7_MIN)
         self.delay_sim_time(1)
-        self.assert_parameter_value("PSC_VELXY_I", TUNE2_MIN)
+        self.assert_parameter_value("PSC_NE_VEL_I", TUNE2_MIN)
 
         self.set_rc(7, RC7_MAX)
         self.delay_sim_time(1)
-        self.assert_parameter_value("PSC_VELXY_I", TUNE2_MAX)
+        self.assert_parameter_value("PSC_NE_VEL_I", TUNE2_MAX)
 
         # make sure RC6 is unaffected:
         self.assert_parameter_value("LOIT_SPEED", int((TUNE_MIN+TUNE_MAX)/2), epsilon=1)
 
         self.set_rc(7, int((RC7_MIN+RC7_MAX)/2))
         self.delay_sim_time(1)
-        self.assert_parameter_value("PSC_VELXY_I", int((TUNE2_MIN+TUNE2_MAX)/2), epsilon=1)
+        self.assert_parameter_value("PSC_NE_VEL_I", int((TUNE2_MIN+TUNE2_MAX)/2), epsilon=1)
 
     def PILOT_THR_BHV(self):
         '''test the PILOT_THR_BHV parameter'''

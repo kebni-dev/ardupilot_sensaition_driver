@@ -263,6 +263,11 @@ protected:
     // called when mount mode is RC-targetting, updates the mnt_target object from RC inputs:
     void update_mnt_target_from_rc_target();
 
+    // method for the mount backends to call to update mnt_target based on
+    // the mount mode.  Methods in here may be overridden by the derived
+    // class to customise behaviour
+    void update_mnt_target();
+
     // returns true if user has configured a valid roll angle range
     // allows user to disable roll even on 3-axis gimbal
     bool roll_range_valid() const { return (_params.roll_angle_min < _params.roll_angle_max); }
@@ -317,6 +322,11 @@ protected:
         MountTarget angle_rad;      // angle target in radians
         MountTarget rate_rads;      // rate target in rad/s
         uint32_t last_rate_request_ms;
+
+        // 'fresh' indicates that the MountTarget data in this
+        // structure has been updated in this loop; some backends use
+        // this to gate whether to send data to the device or not.
+        bool fresh;
     } mnt_target;
     
     // RP earth frame locks accessible by backend
@@ -328,10 +338,6 @@ private:
 
     // get pilot input (in the range -1 to +1) received through RC
     void get_rc_input(float& roll_in, float& pitch_in, float& yaw_in) const;
-
-    // get angle or rate targets from pilot RC
-    // target_type will be either ANGLE or RATE, rpy will be the target angle in deg or rate in deg/s
-    void get_rc_target(MountTargetType& target_type, MountTarget& rpy) const;
 
     // get angle targets (in radians) to a Location
     // returns true on success, false on failure
