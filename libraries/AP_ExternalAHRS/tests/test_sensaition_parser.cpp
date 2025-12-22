@@ -285,7 +285,7 @@ static bool cmp_packages(Measurement& in, Parser::Measurement& out)
                 in.gnss2_fix != out.gnss2_fix ||
                 in.num_sats_gnss1 != out.num_sats_gnss1 ||
                 in.num_sats_gnss2 != out.num_sats_gnss2 ||
-                in.time_itow != out.time_itow ||
+                in.time_itow_ms != out.time_itow_ms ||
                 out.gps_week != 2396 ||
                 in.error_flags != out.error_flags ||
                 in.sensor_valid != out.sensor_valid) {

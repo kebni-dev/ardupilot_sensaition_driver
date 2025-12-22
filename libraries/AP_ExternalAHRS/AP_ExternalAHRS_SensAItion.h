@@ -47,8 +47,6 @@ public:
 
     // Main Loop
     void update() override {
-        // REVIEW: We take the semaphore here, then again in check_uart(). Skip it here?
-        WITH_SEMAPHORE(sem_handle);
         check_uart();
     }
 
@@ -56,7 +54,7 @@ private:
     // REVIEW: The semaphore is used to protect all member variables that can be read/written
     // from inside the thread that we start (which calls update_thread()).
     // We should group those member variables to clarify the protection scope of the semaphore.
-    HAL_Semaphore sem_handle;
+    mutable HAL_Semaphore sem_handle;
     AP_ExternalAHRS::ins_data_message_t _ins;
     AP_ExternalAHRS::mag_data_message_t _mag;
     AP_ExternalAHRS::baro_data_message_t _baro;

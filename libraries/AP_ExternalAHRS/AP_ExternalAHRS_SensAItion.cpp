@@ -123,16 +123,18 @@ bool AP_ExternalAHRS_SensAItion::initialised() const
 
 bool AP_ExternalAHRS_SensAItion::pre_arm_check(char *failure_msg, uint8_t failure_msg_len) const
 {
-    WITH_SEMAPHORE(sem_handle);
     if (!healthy()) {
         hal.util->snprintf(failure_msg, failure_msg_len, "SensAItion Unhealthy");
         return false;
     }
 
-    if (_ins_mode_enabled) {
-        if (_last_alignment_status != 1) {
-            hal.util->snprintf(failure_msg, failure_msg_len, "SensAItion Aligning");
-            return false;
+    {
+        WITH_SEMAPHORE(sem_handle);
+        if (_ins_mode_enabled) {
+            if (_last_alignment_status != 1) {
+                hal.util->snprintf(failure_msg, failure_msg_len, "SensAItion Aligning");
+                return false;
+            }
         }
     }
 
