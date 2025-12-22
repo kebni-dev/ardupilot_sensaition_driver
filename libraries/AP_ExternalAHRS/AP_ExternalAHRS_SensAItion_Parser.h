@@ -47,7 +47,6 @@ public:
     static const uint8_t HEADER_BYTE = 0xFA;
 
     // Container for decoded data passed to Backend
-    // Container for decoded data passed to Backend
     struct Measurement {
         MeasurementType type;
         uint64_t timestamp_us;
@@ -64,14 +63,14 @@ public:
 
         // Packet 2 (INS) Data
         Location location;          // Lat/Lon/Alt
-        Vector3f velocity_ned;      // North/East/Down m/s
+        Vector3f velocity_ned;      // North/East/Down (m/s)
         
         // Accuracy Metrics (Vectors as requested)
         // ArduPilot often uses float for horiz/vert, but Vector3f is more flexible
         // if the sensor provides 3-axis accuracy.
         // Based on your config (AccLat, AccLon, AccPosD), we have 3 components.
-        Vector3f pos_accuracy;      // X=Lat, Y=Lon, Z=Alt (meters)
-        Vector3f vel_accuracy;      // X=VelN, Y=VelE, Z=VelD (m/s)
+        Vector3f pos_accuracy;      // North/East/Down (m)
+        Vector3f vel_accuracy;      // North/East/Down (m/s)
         
         // Status & Health Flags
         uint8_t alignment_status;   // 1 = Align OK
@@ -82,7 +81,7 @@ public:
         uint8_t num_sats_gnss2;
         
         // Time
-        uint32_t time_itow;         // ms
+        uint32_t time_itow_ms;      // GNSS time of week (ms)
         uint16_t gps_week;          // Calculated Week Number
         
         uint32_t error_flags;       // Bitmask from sensor
@@ -92,11 +91,15 @@ public:
     // Constructor
     AP_ExternalAHRS_SensAItion_Parser(ConfigMode mode);
 
-    // Main public interface
+    // REVIEW: This interface doesn't seem to be used. Remove it?
     void parse_bytes(const uint8_t* data, size_t data_size, Measurement& measurement);
+
+    // REVIEW: Maybe make this private, since it messes with the internal states
+    // and doesn't seem to be called from the outside?
+    // Reset parser, except for packet and parse error counters
     void reset_parser();
-    // NEW: Stream Processor with Callback
-    // Process buffer and call 'handler' for EVERY valid packet found.
+
+    // Parse 'data_size' bytes from 'data'. Call 'handler' for EVERY valid packet found.
     template <typename Functor>
     void parse_stream(const uint8_t* data, size_t data_size, Functor handler) {
         Measurement m; 
@@ -109,11 +112,11 @@ public:
         }
     }
 
-    // Statistics
+    // Number of parsed full length buffers that did not contain a valid packet
     uint32_t get_parse_errors() const { return parse_errors; }
+
+    // Number of valid packets received during object lifetime
     uint32_t get_valid_packets() const { return valid_packets; }
-
-
 
 private:
     // Payload Sizes (Excluding Header, ID, CRC)

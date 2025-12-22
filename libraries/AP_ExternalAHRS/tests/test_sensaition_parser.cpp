@@ -38,6 +38,7 @@ static void fill_u8(uint8_t* data, size_t& loc, uint8_t val)
 }
 
 // --- UPDATED STRUCT (Matches Parser + Date/Week Support) ---
+// REVIEW: Why not use AP_ExternalAHRS_SensAItion_Parser::Measurement?
 struct Measurement {
     Parser::MeasurementType type;
 
@@ -68,8 +69,8 @@ struct Measurement {
     uint8_t num_sats_gnss2;
 
     // Time & Date (Input for Generator)
-    uint32_t time_itow;
-    uint16_t year;
+    uint32_t time_itow_ms;
+    uint16_t year; 
     uint8_t month;
     uint8_t day;
 
@@ -158,7 +159,7 @@ static void fill_simulated_packet(uint8_t* data, size_t& data_length,
         fill_u8(data, idx, m.alignment_status);
 
         // 34-37: iTOW
-        fill_be32(data, idx, m.time_itow);
+        fill_be32(data, idx, m.time_itow_ms);
 
         // 38-39: GNSS Fix (Mask 5 -> 2 Bytes)
         // Wire: [GNSS2][GNSS1]
@@ -226,7 +227,7 @@ static Measurement default_measurement(Parser::MeasurementType type) {
         m.gnss1_fix = 3;
         m.gnss2_fix = 0;
         m.num_sats_gnss1 = 12;
-        m.time_itow = 1000;
+        m.time_itow_ms = 1000;
         m.year = 2025;
         m.month = 12;
         m.day = 10;
@@ -642,7 +643,7 @@ TEST(SensAItionParser, Interleaved_INS_FullFieldVerification)
     in.location.alt = 1500; // cm
     in.velocity_ned = Vector3f(-5.5f, 2.2f, 0.5f);
     in.alignment_status = 1;
-    in.time_itow = 987654321;
+    in.time_itow_ms = 987654321;
     in.gnss1_fix = 3;
     in.gnss2_fix = 2;
 
@@ -678,7 +679,7 @@ TEST(SensAItionParser, Interleaved_INS_FullFieldVerification)
     EXPECT_NEAR(out.velocity_ned.x, in.velocity_ned.x, 0.001f);
 
     EXPECT_EQ(out.alignment_status, in.alignment_status);
-    EXPECT_EQ(out.time_itow, in.time_itow);
+    EXPECT_EQ(out.time_itow_ms, in.time_itow_ms);
     EXPECT_EQ(out.gnss1_fix, in.gnss1_fix);
     EXPECT_EQ(out.gnss2_fix, in.gnss2_fix);
 

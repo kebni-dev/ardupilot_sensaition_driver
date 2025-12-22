@@ -323,14 +323,14 @@ void AP_ExternalAHRS_SensAItion_Parser::decode_ins(const uint8_t* payload, Measu
     int32_t vel_e_mm = (int32_t)((payload[21]<<24)|(payload[22]<<16)|(payload[23]<<8)|payload[24]);
     int32_t vel_d_mm = (int32_t)((payload[25]<<24)|(payload[26]<<16)|(payload[27]<<8)|payload[28]);
 
-    // 29-32: Altitude MSL (mm)
+    // 29-32: Altitude relative to WGS 84 ellipsoid (mm)
     int32_t alt_raw_mm = (int32_t)((payload[29]<<24)|(payload[30]<<16)|(payload[31]<<8)|payload[32]);
 
     // 33: Alignment Status
     measurement.alignment_status = payload[33];
 
-    // 34-37: Time iTOW
-    measurement.time_itow = (uint32_t)((payload[34]<<24)|(payload[35]<<16)|(payload[36]<<8)|payload[37]);
+    // 34-37: Time of week (ms)
+    measurement.time_itow_ms = (uint32_t)((payload[34]<<24)|(payload[35]<<16)|(payload[36]<<8)|payload[37]);
 
     // 38-39: GNSS Fix
     measurement.gnss2_fix = payload[38];
@@ -350,9 +350,8 @@ void AP_ExternalAHRS_SensAItion_Parser::decode_ins(const uint8_t* payload, Measu
     int32_t acc_vd_pos_mm = (int32_t)((payload[65]<<24)|(payload[66]<<16)|(payload[67]<<8)|payload[68]);
 
     // --- 2. POPULATE & CONVERT ---
-    measurement.location.lat = lat_raw;
-    measurement.location.lng = lon_raw;
-    measurement.location.alt = alt_raw_mm / 10; // mm -> cm
+    const float mm_to_cm = 0.1f;
+    measurement.location = Location(lat_raw, lon_raw, alt_raw_mm * mm_to_cm, Location::AltFrame::ABSOLUTE);
 
     const float mms_to_ms = 0.001f;
     const float mm_to_m = 0.001f;
