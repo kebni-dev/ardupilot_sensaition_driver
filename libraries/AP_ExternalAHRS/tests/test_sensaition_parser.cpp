@@ -4,35 +4,43 @@
 const AP_HAL::HAL& hal = AP_HAL::get_HAL();
 
 namespace {
-// Units definitions Kebni
-constexpr float UG_PER_MSS = 1e6f / 9.80665f;
-constexpr float UDEGS_PER_RADS = 1e6f * 180.0f / 3.1415926f;
-constexpr float MHPA_PER_PA = 1e3f / 100.0f;
+    // Units definitions Kebni
+    constexpr float UG_PER_MSS = 1e6f / 9.80665f;
+    constexpr float UDEGS_PER_RADS = 1e6f * 180.0f / 3.1415926f;
+    constexpr float MHPA_PER_PA = 1e3f / 100.0f;
 
-using Parser = AP_ExternalAHRS_SensAItion_Parser;
+    using Parser = AP_ExternalAHRS_SensAItion_Parser;
 }
 
 // --- HELPER FUNCTIONS ---
-static void fill_be32(uint8_t* data, size_t& loc, int32_t val) {
+static bool is_equal(const float f1, const float f2, const float eps)
+{
+    return (fabs(f1 - f2) < eps);
+}
+
+static void fill_be32(uint8_t* data, size_t& loc, int32_t val)
+{
     data[loc++] = (val >> 24) & 0xFF;
     data[loc++] = (val >> 16) & 0xFF;
     data[loc++] = (val >> 8) & 0xFF;
     data[loc++] = val & 0xFF;
 }
 
-static void fill_be16(uint8_t* data, size_t& loc, int16_t val) {
+static void fill_be16(uint8_t* data, size_t& loc, int16_t val)
+{
     data[loc++] = (val >> 8) & 0xFF;
     data[loc++] = val & 0xFF;
 }
 
-static void fill_u8(uint8_t* data, size_t& loc, uint8_t val) {
+static void fill_u8(uint8_t* data, size_t& loc, uint8_t val)
+{
     data[loc++] = val;
 }
 
 // --- UPDATED STRUCT (Matches Parser + Date/Week Support) ---
 struct Measurement {
     Parser::MeasurementType type;
-    
+
     // Packet 0 (IMU) Data
     Vector3f acceleration_mss;
     Vector3f angular_velocity_rads;
@@ -46,27 +54,27 @@ struct Measurement {
     // Packet 2 (INS) Data
     Location location;          // Lat/Lon/Alt
     Vector3f velocity_ned;      // North/East/Down m/s
-    
+
     // Accuracy Metrics (Vectors)
     Vector3f pos_accuracy;      // X=Lat, Y=Lon, Z=Alt (meters)
     Vector3f vel_accuracy;      // X=VelN, Y=VelE, Z=VelD (m/s)
-    
+
     // Status & Health Flags
     uint8_t alignment_status;   // 1 = Align OK
     uint8_t gnss1_fix;
     uint8_t gnss2_fix;
-    
+
     uint8_t num_sats_gnss1;
     uint8_t num_sats_gnss2;
-    
+
     // Time & Date (Input for Generator)
     uint32_t time_itow;
-    uint16_t year; 
+    uint16_t year;
     uint8_t month;
     uint8_t day;
 
     // The Calculated Result (Output from Parser)
-    uint16_t gps_week; 
+    uint16_t gps_week;
 
     uint32_t error_flags;       // Bitmask from sensor
     uint8_t sensor_valid;       // Byte 49 (New in v5)
@@ -78,15 +86,22 @@ static void fill_simulated_packet(uint8_t* data, size_t& data_length,
                                   Parser::ConfigMode mode)
 {
     size_t idx = 0;
-    
+
     // 1. Header & ID
     data[idx++] = 0xFA;
     if (mode == Parser::ConfigMode::INTERLEAVED_INS) {
         switch (m.type) {
-            case Parser::MeasurementType::IMU:  data[idx++] = 0x00; break;
-            case Parser::MeasurementType::AHRS: data[idx++] = 0x01; break;
-            case Parser::MeasurementType::INS:  data[idx++] = 0x02; break;
-            default: break;
+            case Parser::MeasurementType::IMU:
+                data[idx++] = 0x00;
+                break;
+            case Parser::MeasurementType::AHRS:
+                data[idx++] = 0x01;
+                break;
+            case Parser::MeasurementType::INS:
+                data[idx++] = 0x02;
+                break;
+            default:
+                break;
         }
     }
 
@@ -99,7 +114,7 @@ static void fill_simulated_packet(uint8_t* data, size_t& data_length,
         fill_be32(data, idx, m.angular_velocity_rads.y * UDEGS_PER_RADS);
         fill_be32(data, idx, m.angular_velocity_rads.z * UDEGS_PER_RADS);
         fill_be16(data, idx, (int16_t)((m.temperature_degc - 20.0f) / 0.008f));
-        fill_be16(data, idx, m.magnetic_field_mgauss.x);
+        fill_be16(data, idx, m.magnetic_field_mgauss.x);        
         fill_be16(data, idx, m.magnetic_field_mgauss.y);
         fill_be16(data, idx, m.magnetic_field_mgauss.z);
         fill_be32(data, idx, m.air_pressure_p * MHPA_PER_PA);
@@ -112,7 +127,7 @@ static void fill_simulated_packet(uint8_t* data, size_t& data_length,
 
     } else if (m.type == Parser::MeasurementType::INS) {
         // --- 69-BYTE LAYOUT ---
-        
+
         // 0-3: Sats (Big Endian of 2 shorts)
         // GNSS2 is first Short, GNSS1 is second Short
         // We put values in the LSB of each Short: [00][Count]
@@ -123,18 +138,18 @@ static void fill_simulated_packet(uint8_t* data, size_t& data_length,
 
         // 4-7: Flags
         fill_be32(data, idx, m.error_flags);
-        
+
         // 8: Valid
         fill_u8(data, idx, m.sensor_valid);
 
         // 9-32: Nav Data
         fill_be32(data, idx, m.location.lat);
         fill_be32(data, idx, m.location.lng);
-        
+
         // Velocity N, E, D
-        fill_be32(data, idx, m.velocity_ned.x * 1000); 
-        fill_be32(data, idx, m.velocity_ned.y * 1000); 
-        fill_be32(data, idx, m.velocity_ned.z * 1000); 
+        fill_be32(data, idx, m.velocity_ned.x * 1000);
+        fill_be32(data, idx, m.velocity_ned.y * 1000);
+        fill_be32(data, idx, m.velocity_ned.z * 1000);
 
         // Altitude
         fill_be32(data, idx, m.location.alt * 10); // cm -> mm
@@ -143,7 +158,7 @@ static void fill_simulated_packet(uint8_t* data, size_t& data_length,
         fill_u8(data, idx, m.alignment_status);
 
         // 34-37: iTOW
-        fill_be32(data, idx, m.time_itow); 
+        fill_be32(data, idx, m.time_itow);
 
         // 38-39: GNSS Fix (Mask 5 -> 2 Bytes)
         // Wire: [GNSS2][GNSS1]
@@ -173,7 +188,9 @@ static void fill_simulated_packet(uint8_t* data, size_t& data_length,
 
     // 4. CRC
     uint8_t checksum = 0;
-    for (size_t i = 1; i < idx; ++i) checksum ^= data[i];
+    for (size_t i = 1; i < idx; ++i) {
+        checksum ^= data[i];
+    }
     data[idx++] = checksum;
 
     data_length = idx;
@@ -183,15 +200,28 @@ static void fill_simulated_packet(uint8_t* data, size_t& data_length,
 static Measurement default_measurement(Parser::MeasurementType type) {
     Measurement m = {};
     m.type = type;
+    if (type == Parser::MeasurementType::IMU) {
+        m.acceleration_mss.x = 4.0f;
+        m.acceleration_mss.y = 5.0f;
+        m.acceleration_mss.z = 6.0f;
+        m.angular_velocity_rads.x = 0.1f;
+        m.angular_velocity_rads.y = 0.2f;
+        m.angular_velocity_rads.z = 0.3f;
+        m.temperature_degc = 56.0f;
+        m.magnetic_field_mgauss.x = 31.0f;
+        m.magnetic_field_mgauss.y = 41.0f;
+        m.magnetic_field_mgauss.z = 51.0f;
+        m.air_pressure_p = 1235.0f;
+    }
     if (type == Parser::MeasurementType::INS) {
         m.location.lat = 590000000;
         m.location.lng = 180000000;
         m.location.alt = 5000;
         m.velocity_ned = Vector3f(1, 0, 0);
-        
+
         m.pos_accuracy = Vector3f(0.5f, 0.5f, 0.8f);
         m.vel_accuracy = Vector3f(0.1f, 0.1f, 0.1f);
-        
+
         m.alignment_status = 1;
         m.gnss1_fix = 3;
         m.gnss2_fix = 0;
@@ -204,38 +234,107 @@ static Measurement default_measurement(Parser::MeasurementType type) {
     }
     return m;
 }
+static bool cmp_packages(Measurement& in, Parser::Measurement& out)
+{
+    if (in.type != out.type) {
+        return false;
+    }
+    //
+
+    //
+    switch (in.type) {
+        case Parser::MeasurementType::IMU:
+            if (!is_equal(in.acceleration_mss[0], out.acceleration_mss[0], 0.00001f) ||
+                !is_equal(in.acceleration_mss[1], out.acceleration_mss[1], 0.00001f) ||
+                !is_equal(in.acceleration_mss[2], out.acceleration_mss[2], 0.00001f) ||
+                !is_equal(in.angular_velocity_rads[0], out.angular_velocity_rads[0], 0.000001f) ||
+                !is_equal(in.angular_velocity_rads[1], out.angular_velocity_rads[1], 0.000001f) ||
+                !is_equal(in.angular_velocity_rads[2], out.angular_velocity_rads[2], 0.000001f) ||
+                !is_equal(in.magnetic_field_mgauss[0], out.magnetic_field_mgauss[0]) ||
+                !is_equal(in.magnetic_field_mgauss[1], out.magnetic_field_mgauss[1]) ||
+                !is_equal(in.magnetic_field_mgauss[2], out.magnetic_field_mgauss[2]) ||
+                !is_equal(in.temperature_degc, out.temperature_degc) ||
+                !is_equal(in.air_pressure_p, out.air_pressure_p)) {
+                return false;
+            }
+            break;
+        case Parser::MeasurementType::AHRS:
+            if (!is_equal(in.orientation.q1, out.orientation.q1) ||
+                !is_equal(in.orientation.q2, out.orientation.q2) ||
+                !is_equal(in.orientation.q3, out.orientation.q3) ||
+                !is_equal(in.orientation.q4, out.orientation.q4)) {
+                return false;
+            }
+            break;
+        case Parser::MeasurementType::INS:
+            if (in.location.lat != out.location.lat ||
+                in.location.lng != out.location.lng ||
+                in.location.alt != out.location.alt ||
+                !is_equal(in.velocity_ned[0], out.velocity_ned[0]) ||
+                !is_equal(in.velocity_ned[1], out.velocity_ned[1]) ||
+                !is_equal(in.velocity_ned[2], out.velocity_ned[2]) ||
+                !is_equal(in.pos_accuracy[0], out.pos_accuracy[0]) ||
+                !is_equal(in.pos_accuracy[1], out.pos_accuracy[1]) ||
+                !is_equal(in.pos_accuracy[2], out.pos_accuracy[2]) ||
+                !is_equal(in.vel_accuracy[0], out.vel_accuracy[0]) ||
+                !is_equal(in.vel_accuracy[1], out.vel_accuracy[1]) ||
+                !is_equal(in.vel_accuracy[2], out.vel_accuracy[2]) ||
+                in.alignment_status != out.alignment_status ||
+                in.gnss1_fix != out.gnss1_fix ||
+                in.gnss2_fix != out.gnss2_fix ||
+                in.num_sats_gnss1 != out.num_sats_gnss1 ||
+                in.num_sats_gnss2 != out.num_sats_gnss2 ||
+                in.time_itow != out.time_itow ||
+                out.gps_week != 2396 ||
+                in.error_flags != out.error_flags ||
+                in.sensor_valid != out.sensor_valid) {
+                return false;
+            }
+            break;
+        default:
+            return false;
+    }
+    return true;
+}
 
 // ---------------------------------------------------------------------------
 // LEGACY MODE TESTS
 // ---------------------------------------------------------------------------
 
-TEST(SensAItionParser, Legacy_IMU_HappyPath) {
+TEST(SensAItionParser, Legacy_IMU_HappyPath)
+{
     Parser parser(Parser::ConfigMode::IMU);
     auto in = default_measurement(Parser::MeasurementType::IMU);
-    uint8_t buffer[100]; size_t len = 100;
+    uint8_t buffer[100];
+    size_t len = 100;
     fill_simulated_packet(buffer, len, in, Parser::ConfigMode::IMU);
-    EXPECT_EQ(len, 38u); 
+    EXPECT_EQ(len, 38u);
     Parser::Measurement out;
     parser.parse_bytes(buffer, len, out);
     EXPECT_EQ(out.type, Parser::MeasurementType::IMU);
+    EXPECT_EQ(cmp_packages(in, out), true);
 }
 
-TEST(SensAItionParser, Legacy_RejectsInvalidChecksum) {
+TEST(SensAItionParser, Legacy_RejectsInvalidChecksum)
+{
     Parser parser(Parser::ConfigMode::IMU);
     auto in = default_measurement(Parser::MeasurementType::IMU);
-    uint8_t buffer[100]; size_t len = 100;
+    uint8_t buffer[100];
+    size_t len = 100;
     fill_simulated_packet(buffer, len, in, Parser::ConfigMode::IMU);
-    buffer[len - 1] += 1; 
+    buffer[len - 1] += 1;
     Parser::Measurement out;
     uint32_t err_start = parser.get_parse_errors();
     parser.parse_bytes(buffer, len, out);
     EXPECT_GT(parser.get_parse_errors(), err_start);
 }
 
-TEST(SensAItionParser, Legacy_RejectsTooSmallBuffer) {
+TEST(SensAItionParser, Legacy_RejectsTooSmallBuffer)
+{
     Parser parser(Parser::ConfigMode::IMU);
     auto in = default_measurement(Parser::MeasurementType::IMU);
-    uint8_t buffer[100]; size_t len = 100;
+    uint8_t buffer[100];
+    size_t len = 100;
     fill_simulated_packet(buffer, len, in, Parser::ConfigMode::IMU);
     Parser::Measurement out;
     uint32_t valid_start = parser.get_valid_packets();
@@ -243,44 +342,61 @@ TEST(SensAItionParser, Legacy_RejectsTooSmallBuffer) {
     EXPECT_EQ(parser.get_valid_packets(), valid_start);
 }
 
-TEST(SensAItionParser, Legacy_ValidPacketsCount) {
+TEST(SensAItionParser, Legacy_ValidPacketsCount)
+{
     Parser parser(Parser::ConfigMode::IMU);
     auto in = default_measurement(Parser::MeasurementType::IMU);
-    uint8_t buffer[100]; size_t len = 100;
+    uint8_t buffer[100];
+    size_t len = 100;
     fill_simulated_packet(buffer, len, in, Parser::ConfigMode::IMU);
     Parser::Measurement out;
     uint32_t valid_start = parser.get_valid_packets();
-    for (int i=0; i<5; i++) parser.parse_bytes(buffer, len, out);
+    for (int i = 0; i < 5; i++) {
+        parser.parse_bytes(buffer, len, out);
+    }
     EXPECT_EQ(parser.get_valid_packets(), valid_start + 5);
 }
 
-TEST(SensAItionParser, Legacy_FalseHeaderInPayload) {
+TEST(SensAItionParser, Legacy_FalseHeaderInPayload)
+{
     Parser parser(Parser::ConfigMode::IMU);
     auto in = default_measurement(Parser::MeasurementType::IMU);
-    uint8_t packet[38]; size_t len = 38;
+    uint8_t packet[38];
+    size_t len = 38;
     fill_simulated_packet(packet, len, in, Parser::ConfigMode::IMU);
-    packet[5] = 0xFA; 
+    packet[5] = 0xFA;
     uint8_t checksum = 0;
-    for (size_t i = 1; i < len - 1; ++i) checksum ^= packet[i];
+    for (size_t i = 1; i < len - 1; ++i) {
+        checksum ^= packet[i];
+    }
     packet[len - 1] = checksum;
     Parser::Measurement out;
     uint32_t start_valid = parser.get_valid_packets();
-    for (size_t i = 0; i < len; i++) parser.parse_bytes(&packet[i], 1, out);
+    for (size_t i = 0; i < len; i++) {
+        parser.parse_bytes(&packet[i], 1, out);
+    }
     EXPECT_EQ(parser.get_valid_packets(), start_valid + 1);
 }
 
-TEST(SensAItionParser, Legacy_FragmentedHeaderRecovery) {
+TEST(SensAItionParser, Legacy_FragmentedHeaderRecovery)
+{
     Parser parser(Parser::ConfigMode::IMU);
     auto in = default_measurement(Parser::MeasurementType::IMU);
-    uint8_t valid[38]; size_t len = 38;
+    uint8_t valid[38];
+    size_t len = 38;
     fill_simulated_packet(valid, len, in, Parser::ConfigMode::IMU);
-    uint8_t stream[120]; size_t slen = 0;
-    stream[slen++] = 0xFA; stream[slen++] = 0x00; 
-    memcpy(&stream[slen], valid, 38); slen += 38;
-    memcpy(&stream[slen], valid, 38); slen += 38;
+    uint8_t stream[120];
+    size_t slen = 0;
+    stream[slen++] = 0xFA; stream[slen++] = 0x00;
+    memcpy(&stream[slen], valid, 38);
+    slen += 38;
+    memcpy(&stream[slen], valid, 38);
+    slen += 38;
     Parser::Measurement out;
     uint32_t start_valid = parser.get_valid_packets();
-    for (size_t i = 0; i < slen; i++) parser.parse_bytes(&stream[i], 1, out);
+    for (size_t i = 0; i < slen; i++) {
+        parser.parse_bytes(&stream[i], 1, out);
+    }
     EXPECT_GE(parser.get_valid_packets() - start_valid, 1u);
 }
 
@@ -288,44 +404,46 @@ TEST(SensAItionParser, Legacy_FragmentedHeaderRecovery) {
 // INTERLEAVED MODE TESTS
 // ---------------------------------------------------------------------------
 
-TEST(SensAItionParser, Interleaved_IMU_HappyPath) {
+TEST(SensAItionParser, Interleaved_IMU_HappyPath)
+{
     Parser parser(Parser::ConfigMode::INTERLEAVED_INS);
     auto in = default_measurement(Parser::MeasurementType::IMU);
-    in.acceleration_mss.x = 2.5f; 
-    uint8_t buffer[64]; size_t len = 64;
+    in.acceleration_mss.x = 2.5f;
+    uint8_t buffer[64];
+    size_t len = 64;
     fill_simulated_packet(buffer, len, in, Parser::ConfigMode::INTERLEAVED_INS);
-    EXPECT_EQ(len, 39u); 
+    EXPECT_EQ(len, 39u);
     Parser::Measurement out;
     parser.parse_bytes(buffer, len, out);
     EXPECT_EQ(out.type, Parser::MeasurementType::IMU);
     EXPECT_NEAR(out.acceleration_mss.x, 2.5f, 0.01f);
+    EXPECT_EQ(cmp_packages(in, out), true);
 }
 
-TEST(SensAItionParser, Interleaved_INS_HappyPath) {
+TEST(SensAItionParser, Interleaved_INS_HappyPath)
+{
     Parser parser(Parser::ConfigMode::INTERLEAVED_INS);
     auto in = default_measurement(Parser::MeasurementType::INS);
-    in.location.alt = 12300; 
-    uint8_t buffer[100]; size_t len = 100;
+    uint8_t buffer[100];
+    size_t len = 100;
     fill_simulated_packet(buffer, len, in, Parser::ConfigMode::INTERLEAVED_INS);
     EXPECT_EQ(len, 72u); // Verified
     Parser::Measurement out;
     parser.parse_bytes(buffer, len, out);
     EXPECT_EQ(out.type, Parser::MeasurementType::INS);
-    EXPECT_EQ(out.location.alt, 12300);
+    EXPECT_EQ(cmp_packages(in, out), true);
 }
 
-TEST(SensAItionParser, Interleaved_InvalidID) {
+TEST(SensAItionParser, Interleaved_InvalidID)
+{
     Parser parser(Parser::ConfigMode::INTERLEAVED_INS);
     Parser::Measurement out;
-    uint8_t bad[] = { 0xFA, 0x99, 0x00, 0x00 }; 
+    uint8_t bad[] = { 0xFA, 0x99, 0x00, 0x00 };
     uint32_t start_err = parser.get_parse_errors();
     parser.parse_bytes(bad, 4, out);
     EXPECT_GT(parser.get_parse_errors(), start_err);
 }
 
-// ---------------------------------------------------------------------------
-// TEST 18: THE OVERWRITE BUG VERIFICATION
-// ---------------------------------------------------------------------------
 TEST(SensAItionParser, Interleaved_Overwrite_Bug_Verification)
 {
     // SETUP: Create a parser in Interleaved mode
@@ -335,9 +453,9 @@ TEST(SensAItionParser, Interleaved_Overwrite_Bug_Verification)
     // 1. Create a buffer containing TWO valid packets back-to-back
     //    Packet A: INS (The high-value target)
     //    Packet B: IMU (The noise)
-    uint8_t stream[200]; 
+    uint8_t stream[200];
     size_t len = 0;
-    
+
     // Create INS Packet
     auto m_ins = default_measurement(Parser::MeasurementType::INS);
     m_ins.location.lat = 123456789; // Unique marker
@@ -361,10 +479,10 @@ TEST(SensAItionParser, Interleaved_Overwrite_Bug_Verification)
     //    EXPECTATION (Current Broken State): 
     //    - out.type will be IMU.
     //    - The INS data is gone.
-    
+
     // [CPO] This test passes if the bug is PRESENT (confirming the diagnosis).
     // If you fix the code, you must flip this logic.
-    
+
     if (out.type == Parser::MeasurementType::IMU) {
         // This confirms the bug: The IMU packet overwrote the INS packet
         printf(" [Confirmed] INS Packet was overwritten by IMU packet!\n");
@@ -374,70 +492,94 @@ TEST(SensAItionParser, Interleaved_Overwrite_Bug_Verification)
         // This would mean the parser stopped after the first packet (Fix applied)
         printf(" [Unexpected] Parser stopped at INS packet. Is it fixed?\n");
     }
-    
+
     // 4. CRITICAL CHECK:
     // If we truly processed the whole buffer, we should have seen the INS packet.
     // Since parse_bytes returns void and modifies 'out' by reference, 
     // we have effectively lost the INS event.
 }
 
-TEST(SensAItionParser, Interleaved_MixedStream_Transitions) {
+TEST(SensAItionParser, Interleaved_MixedStream_Transitions)
+{
     Parser parser(Parser::ConfigMode::INTERLEAVED_INS);
     auto m_imu = default_measurement(Parser::MeasurementType::IMU);
     auto m_ahrs = default_measurement(Parser::MeasurementType::AHRS);
     auto m_ins = default_measurement(Parser::MeasurementType::INS);
-    uint8_t stream[200]; size_t len = 0; size_t part_len;
-    
-    part_len = 200 - len; fill_simulated_packet(&stream[len], part_len, m_imu, Parser::ConfigMode::INTERLEAVED_INS); len += part_len;
-    part_len = 200 - len; fill_simulated_packet(&stream[len], part_len, m_ahrs, Parser::ConfigMode::INTERLEAVED_INS); len += part_len;
-    part_len = 200 - len; fill_simulated_packet(&stream[len], part_len, m_ins, Parser::ConfigMode::INTERLEAVED_INS); len += part_len;
+    uint8_t stream[200];
+    size_t len = 0;
+    size_t part_len;
+
+    part_len = 200 - len;
+    fill_simulated_packet(&stream[len], part_len, m_imu, Parser::ConfigMode::INTERLEAVED_INS);
+    len += part_len;
+    part_len = 200 - len;
+    fill_simulated_packet(&stream[len], part_len, m_ahrs, Parser::ConfigMode::INTERLEAVED_INS);
+    len += part_len;
+    part_len = 200 - len;
+    fill_simulated_packet(&stream[len], part_len, m_ins, Parser::ConfigMode::INTERLEAVED_INS);
+    len += part_len;
 
     Parser::Measurement out;
-    int counts[3] = {0};
+    int counts[3] = { 0 };
     for (size_t i = 0; i < len; i++) {
         parser.parse_bytes(&stream[i], 1, out);
-        if (out.type == Parser::MeasurementType::IMU) counts[0]++;
-        if (out.type == Parser::MeasurementType::AHRS) counts[1]++;
-        if (out.type == Parser::MeasurementType::INS) counts[2]++;
+        if (out.type == Parser::MeasurementType::IMU) {
+            EXPECT_EQ(cmp_packages(m_imu, out), true);
+            counts[0]++;
+        } else if (out.type == Parser::MeasurementType::AHRS) {
+            EXPECT_EQ(cmp_packages(m_ahrs, out), true);
+            counts[1]++;
+        } else if (out.type == Parser::MeasurementType::INS) {
+            EXPECT_EQ(cmp_packages(m_ins, out), true);
+            counts[2]++;
+        }
     }
-    EXPECT_EQ(counts[0], 1); EXPECT_EQ(counts[1], 1); EXPECT_EQ(counts[2], 1);
+    EXPECT_EQ(counts[0], 1);
+    EXPECT_EQ(counts[1], 1);
+    EXPECT_EQ(counts[2], 1);
 }
 
-TEST(SensAItionParser, Interleaved_INS_Fragmentation) {
+TEST(SensAItionParser, Interleaved_INS_Fragmentation)
+{
     Parser parser(Parser::ConfigMode::INTERLEAVED_INS);
     auto in = default_measurement(Parser::MeasurementType::INS);
-    uint8_t packet[100]; size_t len = 100;
+    uint8_t packet[100];
+    size_t len = 100;
     fill_simulated_packet(packet, len, in, Parser::ConfigMode::INTERLEAVED_INS);
     Parser::Measurement out;
     for (size_t i = 0; i < len - 1; i++) {
         parser.parse_bytes(&packet[i], 1, out);
         EXPECT_EQ(out.type, Parser::MeasurementType::UNINITIALIZED);
     }
-    parser.parse_bytes(&packet[len-1], 1, out);
+    parser.parse_bytes(&packet[len - 1], 1, out);
     EXPECT_EQ(out.type, Parser::MeasurementType::INS);
 }
 
-TEST(SensAItionParser, Interleaved_INS_GoldenCoordinates) {
+TEST(SensAItionParser, Interleaved_INS_GoldenCoordinates)
+{
     Parser parser(Parser::ConfigMode::INTERLEAVED_INS);
     Parser::Measurement out;
     // ... This test is redundant with FullFieldVerification but keeping per request ...
     // Just verifying Lat/Lon slots exist
     auto in = default_measurement(Parser::MeasurementType::INS);
-    in.location.lat = 593293230; 
+    in.location.lat = 593293230;
     in.location.lng = 180685810;
-    uint8_t packet[100]; size_t len = 100;
+    uint8_t packet[100];
+    size_t len = 100;
     fill_simulated_packet(packet, len, in, Parser::ConfigMode::INTERLEAVED_INS);
     parser.parse_bytes(packet, len, out);
     EXPECT_EQ(out.location.lat, 593293230);
     EXPECT_EQ(out.location.lng, 180685810);
 }
 
-TEST(SensAItionParser, Interleaved_Data_StressTest) {
+TEST(SensAItionParser, Interleaved_Data_StressTest)
+{
     Parser parser(Parser::ConfigMode::INTERLEAVED_INS);
     auto in = default_measurement(Parser::MeasurementType::INS);
-    in.location.lat = -593293230; 
-    in.velocity_ned.x = -15.5f; 
-    uint8_t buffer[100]; size_t len = 100;
+    in.location.lat = -593293230;
+    in.velocity_ned.x = -15.5f;
+    uint8_t buffer[100];
+    size_t len = 100;
     fill_simulated_packet(buffer, len, in, Parser::ConfigMode::INTERLEAVED_INS);
     Parser::Measurement out;
     parser.parse_bytes(buffer, len, out);
@@ -445,41 +587,46 @@ TEST(SensAItionParser, Interleaved_Data_StressTest) {
     EXPECT_NEAR(out.velocity_ned.x, -15.5f, 0.01f);
 }
 
-TEST(SensAItionParser, Interleaved_NoiseRecovery) {
+TEST(SensAItionParser, Interleaved_NoiseRecovery)
+{
     Parser parser(Parser::ConfigMode::INTERLEAVED_INS);
     auto in = default_measurement(Parser::MeasurementType::INS);
-    uint8_t valid[100]; size_t len = 100;
+    uint8_t valid[100];
+    size_t len = 100;
     fill_simulated_packet(valid, len, in, Parser::ConfigMode::INTERLEAVED_INS);
-    uint8_t stream[200]; 
-    memset(stream, 0xEE, 20); 
+    uint8_t stream[200];
+    memset(stream, 0xEE, 20);
     memcpy(&stream[20], valid, len);
     Parser::Measurement out;
     bool found = false;
     for (size_t i = 0; i < 20 + len; i++) {
         parser.parse_bytes(&stream[i], 1, out);
-        if (out.type == Parser::MeasurementType::INS) found = true;
+        if (out.type == Parser::MeasurementType::INS) {
+            found = true;
+        }
     }
     EXPECT_TRUE(found);
 }
 
-TEST(SensAItionParser, Legacy_IMU_PartialStream) {
+TEST(SensAItionParser, Legacy_IMU_PartialStream)
+{
     Parser parser(Parser::ConfigMode::IMU);
     auto in = default_measurement(Parser::MeasurementType::IMU);
-    uint8_t packet[100]; size_t len = 100;
+    uint8_t packet[100];
+    size_t len = 100;
     fill_simulated_packet(packet, len, in, Parser::ConfigMode::IMU);
     Parser::Measurement out;
     bool found = false;
     for (size_t i = 0; i < len; i += 5) {
         size_t chk = (len - i < 5) ? len - i : 5;
         parser.parse_bytes(&packet[i], chk, out);
-        if (out.type == Parser::MeasurementType::IMU) found = true;
+        if (out.type == Parser::MeasurementType::IMU) {
+            found = true;
+        }
     }
     EXPECT_TRUE(found);
 }
 
-// ---------------------------------------------------------------------------
-// TEST 16: FULL FIELD VERIFICATION (Gold Master)
-// ---------------------------------------------------------------------------
 TEST(SensAItionParser, Interleaved_INS_FullFieldVerification)
 {
     Parser parser(Parser::ConfigMode::INTERLEAVED_INS);
@@ -497,8 +644,8 @@ TEST(SensAItionParser, Interleaved_INS_FullFieldVerification)
     in.alignment_status = 1;
     in.time_itow = 987654321;
     in.gnss1_fix = 3;
-    in.gnss2_fix = 2; 
-    
+    in.gnss2_fix = 2;
+
     // Time -> Week Calculation Check
     // 2025-12-10 is GPS Week 2396
     in.year = 2025;
@@ -515,8 +662,8 @@ TEST(SensAItionParser, Interleaved_INS_FullFieldVerification)
     size_t len = 100;
     fill_simulated_packet(buffer, len, in, Parser::ConfigMode::INTERLEAVED_INS);
 
-    Parser::Measurement out; 
-    parser.parse_bytes(buffer, len, out); 
+    Parser::Measurement out;
+    parser.parse_bytes(buffer, len, out);
 
     // VERIFICATION
     EXPECT_EQ(out.type, Parser::MeasurementType::INS);
@@ -524,38 +671,36 @@ TEST(SensAItionParser, Interleaved_INS_FullFieldVerification)
     EXPECT_EQ(out.num_sats_gnss2, in.num_sats_gnss2);
     EXPECT_EQ(out.error_flags, in.error_flags);
     EXPECT_EQ(out.sensor_valid, in.sensor_valid);
-    
+
     EXPECT_EQ(out.location.lat, in.location.lat);
     EXPECT_EQ(out.location.lng, in.location.lng);
     EXPECT_EQ(out.location.alt, in.location.alt);
     EXPECT_NEAR(out.velocity_ned.x, in.velocity_ned.x, 0.001f);
-    
+
     EXPECT_EQ(out.alignment_status, in.alignment_status);
     EXPECT_EQ(out.time_itow, in.time_itow);
     EXPECT_EQ(out.gnss1_fix, in.gnss1_fix);
     EXPECT_EQ(out.gnss2_fix, in.gnss2_fix);
-    
+
     // Week Verify
     EXPECT_EQ(out.gps_week, expected_week) << "GPS Week Calc Failed";
-    
+
     // Vector Verify
     EXPECT_NEAR(out.pos_accuracy.x, in.pos_accuracy.x, 0.001f);
     EXPECT_NEAR(out.pos_accuracy.y, in.pos_accuracy.y, 0.001f);
     EXPECT_NEAR(out.pos_accuracy.z, in.pos_accuracy.z, 0.001f);
-    
+
     EXPECT_NEAR(out.vel_accuracy.x, in.vel_accuracy.x, 0.001f);
     EXPECT_NEAR(out.vel_accuracy.y, in.vel_accuracy.y, 0.001f);
     EXPECT_NEAR(out.vel_accuracy.z, in.vel_accuracy.z, 0.001f);
 }
 
-// ---------------------------------------------------------------------------
-// TEST 17: GPS WEEK EDGE CASES
-// ---------------------------------------------------------------------------
 TEST(SensAItionParser, GPS_Week_Calculation_EdgeCases)
 {
     Parser parser(Parser::ConfigMode::INTERLEAVED_INS);
     auto in = default_measurement(Parser::MeasurementType::INS);
-    uint8_t buffer[100]; size_t len = 100;
+    uint8_t buffer[100];
+    size_t len = 100;
     Parser::Measurement out;
 
     // CASE 1: Leap Year (Feb 29 2024)
