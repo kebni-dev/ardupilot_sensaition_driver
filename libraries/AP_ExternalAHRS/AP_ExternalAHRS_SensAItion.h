@@ -46,7 +46,8 @@ public:
     uint8_t num_gps_sensors() const override;
 
     // Main Loop
-    void update() override {
+    void update() override
+    {
         check_uart();
     }
 
@@ -60,7 +61,7 @@ private:
     AP_ExternalAHRS::mag_data_message_t _mag;
     AP_ExternalAHRS::baro_data_message_t _baro;
     AP_ExternalAHRS::gps_data_message_t _gps;
-    
+
     AP_ExternalAHRS_SensAItion_Parser parser;
 
     // UART

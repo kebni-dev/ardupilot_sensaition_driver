@@ -64,26 +64,26 @@ public:
         // Packet 2 (INS) Data
         Location location;          // Lat/Lon/Alt
         Vector3f velocity_ned;      // North/East/Down (m/s)
-        
+
         // Accuracy Metrics (Vectors as requested)
         // ArduPilot often uses float for horiz/vert, but Vector3f is more flexible
         // if the sensor provides 3-axis accuracy.
         // Based on your config (AccLat, AccLon, AccPosD), we have 3 components.
         Vector3f pos_accuracy;      // North/East/Down (m)
         Vector3f vel_accuracy;      // North/East/Down (m/s)
-        
+
         // Status & Health Flags
         uint8_t alignment_status;   // 1 = Align OK
         uint8_t gnss1_fix;
         uint8_t gnss2_fix;
-        
+
         uint8_t num_sats_gnss1;
         uint8_t num_sats_gnss2;
-        
+
         // Time
         uint32_t time_itow_ms;      // GNSS time of week (ms)
         uint16_t gps_week;          // Calculated Week Number
-        
+
         uint32_t error_flags;       // Bitmask from sensor
         uint8_t sensor_valid;       // Validity bitmask
     };
@@ -93,8 +93,9 @@ public:
 
     // Parse 'data_size' bytes from 'data'. Call 'handler' for EVERY valid packet found.
     template <typename Functor>
-    void parse_stream(const uint8_t* data, size_t data_size, Functor& handler) {
-        Measurement m; 
+    void parse_stream(const uint8_t* data, size_t data_size, Functor& handler)
+    {
+        Measurement m;
         for (size_t i = 0; i < data_size; i++) {
             if (parse_single_byte(data[i])) {
                 decode_packet(m);
@@ -105,10 +106,16 @@ public:
     }
 
     // Number of parsed full length buffers that did not contain a valid packet
-    uint32_t get_parse_errors() const { return parse_errors; }
+    uint32_t get_parse_errors() const
+    {
+        return parse_errors;
+    }
 
     // Number of valid packets received during object lifetime
-    uint32_t get_valid_packets() const { return valid_packets; }
+    uint32_t get_valid_packets() const
+    {
+        return valid_packets;
+    }
 
 private:
     // Payload Sizes (Excluding Header, ID, CRC)
@@ -152,7 +159,7 @@ private:
     ConfigMode config_mode;
     ParseState parse_state;
     PacketID current_packet_id;
-    
+
     uint8_t packet_buffer[MAX_PACKET_SIZE];
     size_t packet_buffer_len;
     size_t target_payload_len;

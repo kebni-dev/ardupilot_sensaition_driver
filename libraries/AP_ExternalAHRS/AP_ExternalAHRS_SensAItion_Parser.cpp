@@ -52,25 +52,25 @@ void AP_ExternalAHRS_SensAItion_Parser::handle_invalid_packet()
                 // We have Header + Potential ID. Process it immediately.
                 uint8_t id = packet_buffer[1];
                 switch (static_cast<PacketID>(id)) {
-                    case PacketID::IMU:  
-                        target_payload_len = PAYLOAD_SIZE_IMU; 
-                        parse_state = ParseState::COLLECTING_PAYLOAD; 
-                        current_packet_id = PacketID::IMU; 
-                        break;
-                    case PacketID::AHRS: 
-                        target_payload_len = PAYLOAD_SIZE_QUAT; 
-                        parse_state = ParseState::COLLECTING_PAYLOAD; 
-                        current_packet_id = PacketID::AHRS; 
-                        break;
-                    case PacketID::INS:  
-                        target_payload_len = PAYLOAD_SIZE_INS; 
-                        parse_state = ParseState::COLLECTING_PAYLOAD; 
-                        current_packet_id = PacketID::INS; 
-                        break;
-                    default: 
-                        // The "New" ID is also bad. Drop header and retry.
-                        reset_parser(); 
-                        return;
+                case PacketID::IMU:
+                    target_payload_len = PAYLOAD_SIZE_IMU;
+                    parse_state = ParseState::COLLECTING_PAYLOAD;
+                    current_packet_id = PacketID::IMU;
+                    break;
+                case PacketID::AHRS:
+                    target_payload_len = PAYLOAD_SIZE_QUAT;
+                    parse_state = ParseState::COLLECTING_PAYLOAD;
+                    current_packet_id = PacketID::AHRS;
+                    break;
+                case PacketID::INS:
+                    target_payload_len = PAYLOAD_SIZE_INS;
+                    parse_state = ParseState::COLLECTING_PAYLOAD;
+                    current_packet_id = PacketID::INS;
+                    break;
+                default:
+                    // The "New" ID is also bad. Drop header and retry.
+                    reset_parser();
+                    return;
                 }
             } else {
                 parse_state = ParseState::WAITING_ID;
@@ -119,11 +119,11 @@ bool AP_ExternalAHRS_SensAItion_Parser::parse_single_byte(uint8_t byte)
         if (byte == HEADER_BYTE) {
             packet_buffer_len = 0;
             packet_buffer[packet_buffer_len++] = byte;
-            
+
             if (config_mode == ConfigMode::INTERLEAVED_INS) {
                 parse_state = ParseState::WAITING_ID;
             } else {
-                target_payload_len = PAYLOAD_SIZE_IMU; 
+                target_payload_len = PAYLOAD_SIZE_IMU;
                 parse_state = ParseState::COLLECTING_PAYLOAD;
             }
         }
@@ -131,28 +131,28 @@ bool AP_ExternalAHRS_SensAItion_Parser::parse_single_byte(uint8_t byte)
 
     case ParseState::WAITING_ID:
         packet_buffer[packet_buffer_len++] = byte;
-        
+
         switch (static_cast<PacketID>(byte)) {
         case PacketID::IMU:
-            target_payload_len = PAYLOAD_SIZE_IMU; 
+            target_payload_len = PAYLOAD_SIZE_IMU;
             current_packet_id = PacketID::IMU;
             parse_state = ParseState::COLLECTING_PAYLOAD;
             break;
-            
+
         case PacketID::AHRS:
-            target_payload_len = PAYLOAD_SIZE_QUAT; 
+            target_payload_len = PAYLOAD_SIZE_QUAT;
             current_packet_id = PacketID::AHRS;
             parse_state = ParseState::COLLECTING_PAYLOAD;
             break;
-            
+
         case PacketID::INS:
-            target_payload_len = PAYLOAD_SIZE_INS; 
+            target_payload_len = PAYLOAD_SIZE_INS;
             current_packet_id = PacketID::INS;
             parse_state = ParseState::COLLECTING_PAYLOAD;
             break;
-            
+
         default:
-            parse_errors++; 
+            parse_errors++;
             handle_invalid_packet();
             break;
         }
@@ -160,7 +160,7 @@ bool AP_ExternalAHRS_SensAItion_Parser::parse_single_byte(uint8_t byte)
 
     case ParseState::COLLECTING_PAYLOAD:
         packet_buffer[packet_buffer_len++] = byte;
-        
+
         // Calculate Expected Total Length
         // Legacy: Header(1) + Payload(N) + CRC(1)
         // Interleaved: Header(1) + ID(1) + Payload(N) + CRC(1)
@@ -171,11 +171,11 @@ bool AP_ExternalAHRS_SensAItion_Parser::parse_single_byte(uint8_t byte)
             if (buffer_contains_valid_packet()) {
 
                 valid_packets++;
-                return true; 
+                return true;
             } else {
-                parse_errors++; 
+                parse_errors++;
                 handle_invalid_packet();
-                return false; 
+                return false;
             }
         }
         break;
@@ -202,7 +202,7 @@ uint8_t AP_ExternalAHRS_SensAItion_Parser::calculate_xor_checksum(const uint8_t*
 void AP_ExternalAHRS_SensAItion_Parser::decode_packet(Measurement& measurement)
 {
     const uint8_t* payload = nullptr;
-    
+
     if (config_mode == ConfigMode::INTERLEAVED_INS) {
         payload = &packet_buffer[2]; // Skip Header + ID
         switch (current_packet_id) {
@@ -273,13 +273,13 @@ void AP_ExternalAHRS_SensAItion_Parser::decode_ahrs(const uint8_t* payload, Meas
     int32_t quat_z_raw = (int32_t)((payload[12]<<24)|(payload[13]<<16)|(payload[14]<<8)|payload[15]);
 
     const float scale_factor = 1.0e-6f;
-    
+
     measurement.orientation = Quaternion(
-        (float)quat_w_raw * scale_factor,
-        (float)quat_x_raw * scale_factor,
-        (float)quat_y_raw * scale_factor,
-        (float)quat_z_raw * scale_factor
-    );
+                                  (float)quat_w_raw * scale_factor,
+                                  (float)quat_x_raw * scale_factor,
+                                  (float)quat_y_raw * scale_factor,
+                                  (float)quat_z_raw * scale_factor
+                              );
 
     measurement.type = MeasurementType::AHRS;
     measurement.timestamp_us = AP_HAL::micros64();
@@ -288,10 +288,10 @@ void AP_ExternalAHRS_SensAItion_Parser::decode_ahrs(const uint8_t* payload, Meas
 void AP_ExternalAHRS_SensAItion_Parser::decode_ins(const uint8_t* payload, Measurement& measurement)
 {
     // --- 1. PARSE RAW BYTES (Big-Endian) ---
-    
+
     // 0-3: Num Sats (G2, G1)
-    measurement.num_sats_gnss2 = payload[1]; 
-    measurement.num_sats_gnss1 = payload[3]; 
+    measurement.num_sats_gnss2 = payload[1];
+    measurement.num_sats_gnss1 = payload[3];
 
     // 4-7: Error Flags
     measurement.error_flags = (uint32_t)((payload[4]<<24)|(payload[5]<<16)|(payload[6]<<8)|payload[7]);
@@ -364,7 +364,7 @@ void AP_ExternalAHRS_SensAItion_Parser::decode_ins(const uint8_t* payload, Measu
     measurement.type = MeasurementType::INS;
     measurement.timestamp_us = AP_HAL::micros64();
 
- }
+}
 
 // ---------------------------------------------------------------------------
 // Helper: Calculate GPS Week from UTC Date
@@ -389,7 +389,7 @@ uint16_t AP_ExternalAHRS_SensAItion_Parser::calculate_gps_week(uint16_t year, ui
     // B. Add days for full months in current year
     const uint8_t days_in_month[] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
     bool curr_leap = (year % 4 == 0 && (year % 100 != 0 || year % 400 == 0));
-    
+
     for (uint8_t m = 0; m < month - 1; m++) {
         if (m == 1 && curr_leap) {
             total_days += 29;
@@ -405,7 +405,9 @@ uint16_t AP_ExternalAHRS_SensAItion_Parser::calculate_gps_week(uint16_t year, ui
     // 1980-01-01 to 1980-01-06 is 5 days.
     // If our calc started at Jan 1, we subtract 5 days to align with GPS Epoch (Jan 6).
     // However, ensure we don't underflow if date is Jan 1-5 1980 (not possible with >2020 check).
-    if (total_days < 6) return 0; // Should not happen for modern dates
+    if (total_days < 6) {
+        return 0;    // Should not happen for modern dates
+    }
     total_days -= 5; // GPS Epoch starts Jan 6
 
     // 2. Return Weeks

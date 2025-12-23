@@ -3,13 +3,14 @@
 
 const AP_HAL::HAL& hal = AP_HAL::get_HAL();
 
-namespace {
-    // Units definitions Kebni
-    constexpr float UG_PER_MSS = 1e6f / 9.80665f;
-    constexpr float UDEGS_PER_RADS = 1e6f * 180.0f / 3.1415926f;
-    constexpr float MHPA_PER_PA = 1e3f / 100.0f;
+namespace
+{
+// Units definitions Kebni
+constexpr float UG_PER_MSS = 1e6f / 9.80665f;
+constexpr float UDEGS_PER_RADS = 1e6f * 180.0f / 3.1415926f;
+constexpr float MHPA_PER_PA = 1e3f / 100.0f;
 
-    using Parser = AP_ExternalAHRS_SensAItion_Parser;
+using Parser = AP_ExternalAHRS_SensAItion_Parser;
 }
 
 // --- HELPER FUNCTIONS ---
@@ -69,7 +70,7 @@ struct Measurement {
 
     // Time & Date (Input for Generator)
     uint32_t time_itow_ms;
-    uint16_t year; 
+    uint16_t year;
     uint8_t month;
     uint8_t day;
 
@@ -91,17 +92,17 @@ static void fill_simulated_packet(uint8_t* data, size_t& data_length,
     data[idx++] = 0xFA;
     if (mode == Parser::ConfigMode::INTERLEAVED_INS) {
         switch (m.type) {
-            case Parser::MeasurementType::IMU:
-                data[idx++] = 0x00;
-                break;
-            case Parser::MeasurementType::AHRS:
-                data[idx++] = 0x01;
-                break;
-            case Parser::MeasurementType::INS:
-                data[idx++] = 0x02;
-                break;
-            default:
-                break;
+        case Parser::MeasurementType::IMU:
+            data[idx++] = 0x00;
+            break;
+        case Parser::MeasurementType::AHRS:
+            data[idx++] = 0x01;
+            break;
+        case Parser::MeasurementType::INS:
+            data[idx++] = 0x02;
+            break;
+        default:
+            break;
         }
     }
 
@@ -114,7 +115,7 @@ static void fill_simulated_packet(uint8_t* data, size_t& data_length,
         fill_be32(data, idx, m.angular_velocity_rads.y * UDEGS_PER_RADS);
         fill_be32(data, idx, m.angular_velocity_rads.z * UDEGS_PER_RADS);
         fill_be16(data, idx, (int16_t)((m.temperature_degc - 20.0f) / 0.008f));
-        fill_be16(data, idx, m.magnetic_field_mgauss.x);        
+        fill_be16(data, idx, m.magnetic_field_mgauss.x);
         fill_be16(data, idx, m.magnetic_field_mgauss.y);
         fill_be16(data, idx, m.magnetic_field_mgauss.z);
         fill_be32(data, idx, m.air_pressure_p * MHPA_PER_PA);
@@ -197,7 +198,8 @@ static void fill_simulated_packet(uint8_t* data, size_t& data_length,
 }
 
 // --- DEFAULT FACTORY ---
-static Measurement default_measurement(Parser::MeasurementType type) {
+static Measurement default_measurement(Parser::MeasurementType type)
+{
     Measurement m = {};
     m.type = type;
     if (type == Parser::MeasurementType::IMU) {
@@ -243,61 +245,62 @@ static bool cmp_packages(Measurement& in, Parser::Measurement& out)
 
     //
     switch (in.type) {
-        case Parser::MeasurementType::IMU:
-            if (!is_equal(in.acceleration_mss[0], out.acceleration_mss[0], 0.00001f) ||
-                !is_equal(in.acceleration_mss[1], out.acceleration_mss[1], 0.00001f) ||
-                !is_equal(in.acceleration_mss[2], out.acceleration_mss[2], 0.00001f) ||
-                !is_equal(in.angular_velocity_rads[0], out.angular_velocity_rads[0], 0.000001f) ||
-                !is_equal(in.angular_velocity_rads[1], out.angular_velocity_rads[1], 0.000001f) ||
-                !is_equal(in.angular_velocity_rads[2], out.angular_velocity_rads[2], 0.000001f) ||
-                !is_equal(in.magnetic_field_mgauss[0], out.magnetic_field_mgauss[0]) ||
-                !is_equal(in.magnetic_field_mgauss[1], out.magnetic_field_mgauss[1]) ||
-                !is_equal(in.magnetic_field_mgauss[2], out.magnetic_field_mgauss[2]) ||
-                !is_equal(in.temperature_degc, out.temperature_degc) ||
-                !is_equal(in.air_pressure_p, out.air_pressure_p)) {
-                return false;
-            }
-            break;
-        case Parser::MeasurementType::AHRS:
-            if (!is_equal(in.orientation.q1, out.orientation.q1) ||
-                !is_equal(in.orientation.q2, out.orientation.q2) ||
-                !is_equal(in.orientation.q3, out.orientation.q3) ||
-                !is_equal(in.orientation.q4, out.orientation.q4)) {
-                return false;
-            }
-            break;
-        case Parser::MeasurementType::INS:
-            if (in.location.lat != out.location.lat ||
-                in.location.lng != out.location.lng ||
-                in.location.alt != out.location.alt ||
-                !is_equal(in.velocity_ned[0], out.velocity_ned[0]) ||
-                !is_equal(in.velocity_ned[1], out.velocity_ned[1]) ||
-                !is_equal(in.velocity_ned[2], out.velocity_ned[2]) ||
-                !is_equal(in.pos_accuracy[0], out.pos_accuracy[0]) ||
-                !is_equal(in.pos_accuracy[1], out.pos_accuracy[1]) ||
-                !is_equal(in.pos_accuracy[2], out.pos_accuracy[2]) ||
-                !is_equal(in.vel_accuracy[0], out.vel_accuracy[0]) ||
-                !is_equal(in.vel_accuracy[1], out.vel_accuracy[1]) ||
-                !is_equal(in.vel_accuracy[2], out.vel_accuracy[2]) ||
-                in.alignment_status != out.alignment_status ||
-                in.gnss1_fix != out.gnss1_fix ||
-                in.gnss2_fix != out.gnss2_fix ||
-                in.num_sats_gnss1 != out.num_sats_gnss1 ||
-                in.num_sats_gnss2 != out.num_sats_gnss2 ||
-                in.time_itow_ms != out.time_itow_ms ||
-                out.gps_week != 2396 ||
-                in.error_flags != out.error_flags ||
-                in.sensor_valid != out.sensor_valid) {
-                return false;
-            }
-            break;
-        default:
+    case Parser::MeasurementType::IMU:
+        if (!is_equal(in.acceleration_mss[0], out.acceleration_mss[0], 0.00001f) ||
+            !is_equal(in.acceleration_mss[1], out.acceleration_mss[1], 0.00001f) ||
+            !is_equal(in.acceleration_mss[2], out.acceleration_mss[2], 0.00001f) ||
+            !is_equal(in.angular_velocity_rads[0], out.angular_velocity_rads[0], 0.000001f) ||
+            !is_equal(in.angular_velocity_rads[1], out.angular_velocity_rads[1], 0.000001f) ||
+            !is_equal(in.angular_velocity_rads[2], out.angular_velocity_rads[2], 0.000001f) ||
+            !is_equal(in.magnetic_field_mgauss[0], out.magnetic_field_mgauss[0]) ||
+            !is_equal(in.magnetic_field_mgauss[1], out.magnetic_field_mgauss[1]) ||
+            !is_equal(in.magnetic_field_mgauss[2], out.magnetic_field_mgauss[2]) ||
+            !is_equal(in.temperature_degc, out.temperature_degc) ||
+            !is_equal(in.air_pressure_p, out.air_pressure_p)) {
             return false;
+        }
+        break;
+    case Parser::MeasurementType::AHRS:
+        if (!is_equal(in.orientation.q1, out.orientation.q1) ||
+            !is_equal(in.orientation.q2, out.orientation.q2) ||
+            !is_equal(in.orientation.q3, out.orientation.q3) ||
+            !is_equal(in.orientation.q4, out.orientation.q4)) {
+            return false;
+        }
+        break;
+    case Parser::MeasurementType::INS:
+        if (in.location.lat != out.location.lat ||
+            in.location.lng != out.location.lng ||
+            in.location.alt != out.location.alt ||
+            !is_equal(in.velocity_ned[0], out.velocity_ned[0]) ||
+            !is_equal(in.velocity_ned[1], out.velocity_ned[1]) ||
+            !is_equal(in.velocity_ned[2], out.velocity_ned[2]) ||
+            !is_equal(in.pos_accuracy[0], out.pos_accuracy[0]) ||
+            !is_equal(in.pos_accuracy[1], out.pos_accuracy[1]) ||
+            !is_equal(in.pos_accuracy[2], out.pos_accuracy[2]) ||
+            !is_equal(in.vel_accuracy[0], out.vel_accuracy[0]) ||
+            !is_equal(in.vel_accuracy[1], out.vel_accuracy[1]) ||
+            !is_equal(in.vel_accuracy[2], out.vel_accuracy[2]) ||
+            in.alignment_status != out.alignment_status ||
+            in.gnss1_fix != out.gnss1_fix ||
+            in.gnss2_fix != out.gnss2_fix ||
+            in.num_sats_gnss1 != out.num_sats_gnss1 ||
+            in.num_sats_gnss2 != out.num_sats_gnss2 ||
+            in.time_itow_ms != out.time_itow_ms ||
+            out.gps_week != 2396 ||
+            in.error_flags != out.error_flags ||
+            in.sensor_valid != out.sensor_valid) {
+            return false;
+        }
+        break;
+    default:
+        return false;
     }
     return true;
 }
 
-class Measurement_Buffer {
+class Measurement_Buffer
+{
 public:
     // Handler that receives new measurements
     void operator()(const AP_ExternalAHRS_SensAItion_Parser::Measurement& meas)
@@ -356,7 +359,7 @@ TEST(SensAItionParser, Legacy_RejectsTooSmallBuffer)
     size_t len = 100;
     fill_simulated_packet(buffer, len, in, Parser::ConfigMode::IMU);
     uint32_t valid_start = parser.get_valid_packets();
-    
+
     Measurement_Buffer mbuf;
     parser.parse_stream(buffer, len - 5, mbuf);
 
@@ -418,7 +421,7 @@ TEST(SensAItionParser, Legacy_FragmentedHeaderRecovery)
     memcpy(&stream[slen], valid, 38);
     slen += 38;
     uint32_t start_valid = parser.get_valid_packets();
-    
+
     Measurement_Buffer mbuf;
     for (size_t i = 0; i < slen; i++) {
         parser.parse_stream(&stream[i], 1, mbuf);
@@ -547,12 +550,12 @@ TEST(SensAItionParser, Interleaved_INS_Fragmentation)
     uint8_t packet[100];
     size_t len = 100;
     fill_simulated_packet(packet, len, in, Parser::ConfigMode::INTERLEAVED_INS);
-    
+
     Measurement_Buffer mbuf;
     // Parse all but one byte
     parser.parse_stream(packet, len - 1, mbuf);
     EXPECT_EQ(mbuf.no_of_messages, 0);
-    
+
     // Then parse the finishing byte of the message
     parser.parse_stream(&packet[len - 1], 1, mbuf);
     EXPECT_EQ(mbuf.no_of_messages, 1);

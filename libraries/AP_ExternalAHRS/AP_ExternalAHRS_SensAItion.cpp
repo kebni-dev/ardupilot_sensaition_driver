@@ -32,9 +32,10 @@
 #include <AP_Compass/AP_Compass.h>
 #include <AP_InertialSensor/AP_InertialSensor.h>
 
-namespace {
-    const float MINIMUM_INTERESTING_BAROMETER_CHANGE_p = 1.0f;
-    const float MINIMUM_INTERESTING_TEMP_CHANGE_degc = 0.1f;
+namespace
+{
+const float MINIMUM_INTERESTING_BAROMETER_CHANGE_p = 1.0f;
+const float MINIMUM_INTERESTING_TEMP_CHANGE_degc = 0.1f;
 }
 
 extern const AP_HAL::HAL &hal;
@@ -44,13 +45,13 @@ AP_ExternalAHRS_SensAItion::AP_ExternalAHRS_SensAItion(AP_ExternalAHRS *_fronten
     parser(AP_ExternalAHRS_SensAItion_Parser::ConfigMode::IMU)
 {
     _ins_mode_enabled = option_is_set(static_cast<AP_ExternalAHRS::OPTIONS>(1U << 1));
-    
-    auto mode = _ins_mode_enabled ? 
-                AP_ExternalAHRS_SensAItion_Parser::ConfigMode::INTERLEAVED_INS : 
+
+    auto mode = _ins_mode_enabled ?
+                AP_ExternalAHRS_SensAItion_Parser::ConfigMode::INTERLEAVED_INS :
                 AP_ExternalAHRS_SensAItion_Parser::ConfigMode::IMU;
 
     if (_ins_mode_enabled) {
-         parser = AP_ExternalAHRS_SensAItion_Parser(mode);
+        parser = AP_ExternalAHRS_SensAItion_Parser(mode);
     }
 
     auto &sm = AP::serialmanager();
@@ -67,11 +68,10 @@ AP_ExternalAHRS_SensAItion::AP_ExternalAHRS_SensAItion(AP_ExternalAHRS *_fronten
                             uint16_t(AP_ExternalAHRS::AvailableSensor::GPS) |
                             uint16_t(AP_ExternalAHRS::AvailableSensor::BARO) |
                             uint16_t(AP_ExternalAHRS::AvailableSensor::COMPASS));
-    }
-    else {
+    } else {
         set_default_sensors(uint16_t(AP_ExternalAHRS::AvailableSensor::IMU));
     }
-    
+
     if (!hal.scheduler->thread_create(
             FUNCTOR_BIND_MEMBER(&AP_ExternalAHRS_SensAItion::update_thread, void),
             "AHRS_SensAItion", 2048, AP_HAL::Scheduler::PRIORITY_SPI, 0)) {
@@ -101,13 +101,13 @@ bool AP_ExternalAHRS_SensAItion::healthy() const
     uint32_t now_ms = AP_HAL::millis();
     bool is_healthy = true;
 
-    if ((now_ms - _last_imu_pkt_ms) > 160) { 
+    if ((now_ms - _last_imu_pkt_ms) > 160) {
         is_healthy = false;
     }
 
     if (is_healthy && _ins_mode_enabled) {
         const bool imu_available = _last_sensor_valid & 0x01;
-        if ((now_ms - _last_ins_pkt_ms) > 400) { 
+        if ((now_ms - _last_ins_pkt_ms) > 400) {
             is_healthy = false;
         } else if (!imu_available) {
             is_healthy = false;
@@ -148,7 +148,7 @@ bool AP_ExternalAHRS_SensAItion::pre_arm_check(char *failure_msg, uint8_t failur
 void AP_ExternalAHRS_SensAItion::get_filter_status(nav_filter_status &status) const
 {
     memset(&status, 0, sizeof(status));
-    
+
     status.flags.initalized = initialised();
 
     if (healthy()) {
@@ -183,16 +183,20 @@ bool AP_ExternalAHRS_SensAItion::check_uart()
 {
     WITH_SEMAPHORE(sem_handle);
 
-    if (!uart) return false;
+    if (!uart) {
+        return false;
+    }
 
     if (!setup_complete) {
         uart->begin(baudrate);
         setup_complete = true;
         GCS_SEND_TEXT(MAV_SEVERITY_INFO, "KEBNI: INIT. Mode:%d Baud:%u",
-            (int)_ins_mode_enabled, (unsigned)baudrate);
+                      (int)_ins_mode_enabled, (unsigned)baudrate);
     }
     uint32_t n = uart->available();
-    if (n == 0) return false;
+    if (n == 0) {
+        return false;
+    }
 
     n = MIN(n, sizeof(buffer));
     ssize_t nread = uart->read(buffer, n);
@@ -209,11 +213,9 @@ bool AP_ExternalAHRS_SensAItion::check_uart()
         //
         if (meas.type == AP_ExternalAHRS_SensAItion_Parser::MeasurementType::IMU) {
             handle_imu(meas, now_ms);
-        }
-        else if (meas.type == AP_ExternalAHRS_SensAItion_Parser::MeasurementType::AHRS) {
+        } else if (meas.type == AP_ExternalAHRS_SensAItion_Parser::MeasurementType::AHRS) {
             handle_ahrs(meas, now_ms);
-        }
-        else if (meas.type == AP_ExternalAHRS_SensAItion_Parser::MeasurementType::INS) {
+        } else if (meas.type == AP_ExternalAHRS_SensAItion_Parser::MeasurementType::INS) {
             handle_ins(meas, now_ms);
         }
     };
@@ -229,7 +231,7 @@ void AP_ExternalAHRS_SensAItion::handle_imu(const AP_ExternalAHRS_SensAItion_Par
 {
     // Time tag
     _last_imu_pkt_ms = now_ms;
-    
+
     // STATE
     {
         WITH_SEMAPHORE(state.sem);
@@ -251,7 +253,7 @@ void AP_ExternalAHRS_SensAItion::handle_imu(const AP_ExternalAHRS_SensAItion_Par
         //
         AP::compass().handle_external(_mag);
     }
-#endif    
+#endif
     // BARO
 #if AP_BARO_EXTERNALAHRS_ENABLED
 
@@ -282,7 +284,8 @@ void AP_ExternalAHRS_SensAItion::handle_ahrs(const AP_ExternalAHRS_SensAItion_Pa
     }
 }
 
-void AP_ExternalAHRS_SensAItion::handle_ins(const AP_ExternalAHRS_SensAItion_Parser::Measurement& meas, uint32_t now_ms) {
+void AP_ExternalAHRS_SensAItion::handle_ins(const AP_ExternalAHRS_SensAItion_Parser::Measurement& meas, uint32_t now_ms)
+{
     // Local data
     _last_ins_pkt_ms = now_ms;
     _last_alignment_status = meas.alignment_status;
@@ -299,28 +302,28 @@ void AP_ExternalAHRS_SensAItion::handle_ins(const AP_ExternalAHRS_SensAItion_Par
     {
         WITH_SEMAPHORE(state.sem);
         state.location = Location(
-                                  meas.location.lat,
-                                  meas.location.lng,
-                                  meas.location.alt,
-                                  Location::AltFrame::ABSOLUTE
-                                  );
+                             meas.location.lat,
+                             meas.location.lng,
+                             meas.location.alt,
+                             Location::AltFrame::ABSOLUTE
+                         );
         state.velocity = meas.velocity_ned;
         state.have_location = true;
         state.have_velocity = true;
         state.last_location_update_us = AP_HAL::micros();
-        
+
         if (!state.have_origin && meas.alignment_status) {
             state.origin = Location(
-                                    meas.location.lat,
-                                    meas.location.lng,
-                                    meas.location.alt,
-                                    Location::AltFrame::ABSOLUTE
-                                    );
+                               meas.location.lat,
+                               meas.location.lng,
+                               meas.location.alt,
+                               Location::AltFrame::ABSOLUTE
+                           );
             state.have_origin = true;
             GCS_SEND_TEXT(MAV_SEVERITY_NOTICE, "KEBNI: Origin Set.");
         }
     }
-    // GPS 
+    // GPS
     {
         _gps.gps_week = meas.gps_week;
         _gps.ms_tow = meas.time_itow_ms;
@@ -336,7 +339,7 @@ void AP_ExternalAHRS_SensAItion::handle_ins(const AP_ExternalAHRS_SensAItion_Par
         // Note: SensAItion reports altitude relative to WGS84, not MSL.
         // But we expect the user to reset the altitude to 0 at start,
         // so the absolute reference should not matter.
-        _gps.msl_altitude = meas.location.alt; 
+        _gps.msl_altitude = meas.location.alt;
         _gps.ned_vel_north = meas.velocity_ned.x;
         _gps.ned_vel_east = meas.velocity_ned.y;
         _gps.ned_vel_down = meas.velocity_ned.z;
@@ -344,13 +347,17 @@ void AP_ExternalAHRS_SensAItion::handle_ins(const AP_ExternalAHRS_SensAItion_Par
         // 3. Estimate DOPs (Unitless) using assumed UERE of 3.0m
         // This answers "What is HDOP/VDOP?"
         const float ASSUMED_UERE = 3.0f;
-        
+
         float est_hdop = _last_h_pos_quality / ASSUMED_UERE;
         float est_vdop = _last_v_pos_quality / ASSUMED_UERE;
-        
+
         // 4. Sanity Clamping (DOP cannot be 0, and rarely < 0.6)
-        if (est_hdop < 0.7f) est_hdop = 0.7f;
-        if (est_vdop < 0.7f) est_vdop = 0.7f;
+        if (est_hdop < 0.7f) {
+            est_hdop = 0.7f;
+        }
+        if (est_vdop < 0.7f) {
+            est_vdop = 0.7f;
+        }
         _gps.hdop = est_hdop;
         _gps.vdop = est_vdop;
 
@@ -372,7 +379,7 @@ bool AP_ExternalAHRS_SensAItion::get_variances(float &velVar, float &posVar, flo
         tasVar = 0; //not used
         return true;
     }
-    
+
     return false;
 }
 
