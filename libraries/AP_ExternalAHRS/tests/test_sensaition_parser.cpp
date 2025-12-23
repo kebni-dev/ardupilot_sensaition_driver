@@ -601,6 +601,7 @@ TEST(SensAItionParser, Legacy_IMU_PartialStream)
     Parser parser(Parser::ConfigMode::IMU);
     auto in = default_measurement(Parser::MeasurementType::IMU);
     uint8_t packet[100];
+    memset(packet, 0x00, 100); // Ensure known content after the packet
     size_t chunk_size = 5;
     size_t len = 20 * chunk_size;
     fill_simulated_packet(packet, len, in, Parser::ConfigMode::IMU);
