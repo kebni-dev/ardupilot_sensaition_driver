@@ -91,17 +91,9 @@ public:
     // Constructor
     AP_ExternalAHRS_SensAItion_Parser(ConfigMode mode);
 
-    // REVIEW: This interface doesn't seem to be used. Remove it?
-    void parse_bytes(const uint8_t* data, size_t data_size, Measurement& measurement);
-
-    // REVIEW: Maybe make this private, since it messes with the internal states
-    // and doesn't seem to be called from the outside?
-    // Reset parser, except for packet and parse error counters
-    void reset_parser();
-
     // Parse 'data_size' bytes from 'data'. Call 'handler' for EVERY valid packet found.
     template <typename Functor>
-    void parse_stream(const uint8_t* data, size_t data_size, Functor handler) {
+    void parse_stream(const uint8_t* data, size_t data_size, Functor& handler) {
         Measurement m; 
         for (size_t i = 0; i < data_size; i++) {
             if (parse_single_byte(data[i])) {
@@ -140,6 +132,7 @@ private:
     };
 
     // Core Logic
+    void reset_parser(); // Does not reset packet and parse error counters
     bool parse_single_byte(uint8_t byte);
     void handle_invalid_packet(); // Robust error recovery (memmove)
     bool buffer_contains_valid_packet() const;

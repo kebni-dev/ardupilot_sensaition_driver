@@ -24,7 +24,7 @@
 
 /*
 This class is the interface to Kebni's SensAItion range of inertial navigation
-sensors, which can feed raw sensor data and/or a sensor fusion solution.
+sensors, which can provide raw sensor data and/or a sensor fusion solution.
 */
 class AP_ExternalAHRS_SensAItion : public AP_ExternalAHRS_backend
 {
@@ -51,10 +51,11 @@ public:
     }
 
 private:
-    // REVIEW: The semaphore is used to protect all member variables that can be read/written
-    // from inside the thread that we start (which calls update_thread()).
-    // We should group those member variables to clarify the protection scope of the semaphore.
     mutable HAL_Semaphore sem_handle;
+
+    // All member variables below are accessed from inside the thread
+    // and should be protected by the semaphore above!
+    // =======================================================
     AP_ExternalAHRS::ins_data_message_t _ins;
     AP_ExternalAHRS::mag_data_message_t _mag;
     AP_ExternalAHRS::baro_data_message_t _baro;
@@ -62,23 +63,13 @@ private:
     
     AP_ExternalAHRS_SensAItion_Parser parser;
 
-    void handle_imu(const AP_ExternalAHRS_SensAItion_Parser::Measurement& meas, uint32_t now_ms);
-    void handle_ahrs(const AP_ExternalAHRS_SensAItion_Parser::Measurement& meas, uint32_t now_ms);
-    void handle_ins(const AP_ExternalAHRS_SensAItion_Parser::Measurement& meas, uint32_t now_ms);
-
     // UART
     AP_HAL::UARTDriver *uart = nullptr;
     uint32_t baudrate = 460800;
     int8_t port_num = -1;
     uint8_t buffer[AP_ExternalAHRS_SensAItion_Parser::MAX_PACKET_SIZE];
 
-    // Threading
     bool setup_complete = false;
-    void update_thread();
-    bool check_uart();
-
-    // Logging
-    void log_ins_status(const AP_ExternalAHRS_SensAItion_Parser::Measurement &meas);
 
     // Persistent State
     uint32_t _last_imu_pkt_ms = 0;
@@ -95,7 +86,19 @@ private:
     float    _last_vel_quality = 999.9f;
     uint32_t _last_error_flags = 0;
 
-    // Configuration
+    // End of member variables that should be protected by semaphore
+    // ==========================================================
+
+    // Only read from inside the thread, does not need semaphore
     bool _ins_mode_enabled = false;
+
+    void update_thread();
+    bool check_uart();
+
+    void handle_imu(const AP_ExternalAHRS_SensAItion_Parser::Measurement& meas, uint32_t now_ms);
+    void handle_ahrs(const AP_ExternalAHRS_SensAItion_Parser::Measurement& meas, uint32_t now_ms);
+    void handle_ins(const AP_ExternalAHRS_SensAItion_Parser::Measurement& meas, uint32_t now_ms);
+
+    void log_ins_status(const AP_ExternalAHRS_SensAItion_Parser::Measurement &meas);
 };
 #endif  // AP_EXTERNAL_AHRS_SENSAITION_ENABLED

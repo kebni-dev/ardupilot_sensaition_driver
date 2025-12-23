@@ -21,7 +21,8 @@
 
 #if AP_EXTERNAL_AHRS_SENSAITION_ENABLED
 
-#include <AP_Math/AP_Math.h>
+#include <float.h>
+
 #include <AP_SerialManager/AP_SerialManager.h>
 #include <GCS_MAVLink/GCS.h>
 #include <AP_HAL/AP_HAL.h>
@@ -30,6 +31,11 @@
 #include <AP_Baro/AP_Baro.h>
 #include <AP_Compass/AP_Compass.h>
 #include <AP_InertialSensor/AP_InertialSensor.h>
+
+namespace {
+    const float MINIMUM_INTERESTING_BAROMETER_CHANGE_p = 1.0f;
+    const float MINIMUM_INTERESTING_TEMP_CHANGE_degc = 0.1f;
+}
 
 extern const AP_HAL::HAL &hal;
 
@@ -90,8 +96,6 @@ uint8_t AP_ExternalAHRS_SensAItion::num_gps_sensors() const
 
 bool AP_ExternalAHRS_SensAItion::healthy() const
 {
-    // REVIEW: _last_imu_pkt_ms and similar are changed inside the thread,
-    // so we should not access them without protection.
     WITH_SEMAPHORE(sem_handle);
 
     uint32_t now_ms = AP_HAL::millis();
@@ -175,6 +179,52 @@ void AP_ExternalAHRS_SensAItion::update_thread()
     }
 }
 
+bool AP_ExternalAHRS_SensAItion::check_uart()
+{
+    WITH_SEMAPHORE(sem_handle);
+
+    if (!uart) return false;
+
+    if (!setup_complete) {
+        uart->begin(baudrate);
+        setup_complete = true;
+        GCS_SEND_TEXT(MAV_SEVERITY_INFO, "KEBNI: INIT. Mode:%d Baud:%u",
+            (int)_ins_mode_enabled, (unsigned)baudrate);
+    }
+    uint32_t n = uart->available();
+    if (n == 0) return false;
+
+    n = MIN(n, sizeof(buffer));
+    ssize_t nread = uart->read(buffer, n);
+
+    bool parsed_any = false;
+
+    auto handler = [&](const AP_ExternalAHRS_SensAItion_Parser::Measurement& meas) {
+        uint32_t now_ms = AP_HAL::millis();
+
+        if (meas.type == AP_ExternalAHRS_SensAItion_Parser::MeasurementType::UNINITIALIZED) {
+            return;
+        }
+        parsed_any = true;
+        //
+        if (meas.type == AP_ExternalAHRS_SensAItion_Parser::MeasurementType::IMU) {
+            handle_imu(meas, now_ms);
+        }
+        else if (meas.type == AP_ExternalAHRS_SensAItion_Parser::MeasurementType::AHRS) {
+            handle_ahrs(meas, now_ms);
+        }
+        else if (meas.type == AP_ExternalAHRS_SensAItion_Parser::MeasurementType::INS) {
+            handle_ins(meas, now_ms);
+        }
+    };
+
+    if (nread > 0) {
+        parser.parse_stream(buffer, nread, handler);
+    }
+
+    return parsed_any;
+}
+
 void AP_ExternalAHRS_SensAItion::handle_imu(const AP_ExternalAHRS_SensAItion_Parser::Measurement& meas, uint32_t now_ms)
 {
     // Time tag
@@ -205,9 +255,12 @@ void AP_ExternalAHRS_SensAItion::handle_imu(const AP_ExternalAHRS_SensAItion_Par
     // BARO
 #if AP_BARO_EXTERNALAHRS_ENABLED
 
-    // REVIEW: This reacts to differences within machine precision. Maybe we should set our own 
-    // tolerances that are physically motivated? Such as ~10 Pa and 0.5 deg C.
-    if (!is_equal(_baro.pressure_pa, meas.air_pressure_p) || !is_equal(_baro.temperature, meas.temperature_degc)) {
+    // ArduPlane has an internal check that triggers an error if there are too many barometer
+    // readings with the same value. Therefore, we don't send them again unless there
+    // has been a relevant change.
+    const bool pressure_changed = fabs(_baro.pressure_pa - meas.air_pressure_p) > MINIMUM_INTERESTING_BAROMETER_CHANGE_p;
+    const bool temp_changed = fabs(_baro.temperature - meas.temperature_degc) > MINIMUM_INTERESTING_TEMP_CHANGE_degc;
+    if (pressure_changed || temp_changed) {
         _baro.instance = 0;
         _baro.pressure_pa = meas.air_pressure_p;
         _baro.temperature = meas.temperature_degc;
@@ -242,7 +295,7 @@ void AP_ExternalAHRS_SensAItion::handle_ins(const AP_ExternalAHRS_SensAItion_Par
     _last_vel_quality = meas.vel_accuracy.length();
     // Log
     log_ins_status(meas);
-    // STATE            
+    // STATE
     {
         WITH_SEMAPHORE(state.sem);
         state.location = Location(
@@ -280,12 +333,14 @@ void AP_ExternalAHRS_SensAItion::handle_ins(const AP_ExternalAHRS_SensAItion_Par
         _gps.latitude = meas.location.lat;
         _gps.longitude = meas.location.lng;
 
-        // REVIEW: SensAItion reports altitude relative to WGS84, not MSL.
-        // Does it need conversion, or can we use it as is?
+        // Note: SensAItion reports altitude relative to WGS84, not MSL.
+        // But we expect the user to reset the altitude to 0 at start,
+        // so the absolute reference should not matter.
         _gps.msl_altitude = meas.location.alt; 
         _gps.ned_vel_north = meas.velocity_ned.x;
         _gps.ned_vel_east = meas.velocity_ned.y;
         _gps.ned_vel_down = meas.velocity_ned.z;
+
         // 3. Estimate DOPs (Unitless) using assumed UERE of 3.0m
         // This answers "What is HDOP/VDOP?"
         const float ASSUMED_UERE = 3.0f;
@@ -305,52 +360,6 @@ void AP_ExternalAHRS_SensAItion::handle_ins(const AP_ExternalAHRS_SensAItion_Par
             AP::gps().handle_external(_gps, instance);
         }
     }
-}
-
-bool AP_ExternalAHRS_SensAItion::check_uart()
-{
-    WITH_SEMAPHORE(sem_handle);
-    
-    if (!uart) return false;
-
-    if (!setup_complete) {
-        uart->begin(baudrate);
-        setup_complete = true;
-        GCS_SEND_TEXT(MAV_SEVERITY_INFO, "KEBNI: INIT. Mode:%d Baud:%u", 
-            (int)_ins_mode_enabled, (unsigned)baudrate);
-    }
-    uint32_t n = uart->available();
-    if (n == 0) return false;
-
-    n = MIN(n, sizeof(buffer));
-    ssize_t nread = uart->read(buffer, n);
-    
-
-    bool parsed_any = false;
-
-    if (nread > 0) {
-        parser.parse_stream(buffer, nread, [&](const AP_ExternalAHRS_SensAItion_Parser::Measurement& meas){
-        
-            uint32_t now_ms = AP_HAL::millis();
-
-            if (meas.type == AP_ExternalAHRS_SensAItion_Parser::MeasurementType::UNINITIALIZED) {
-                return;
-            }
-            parsed_any = true;
-            //
-            if (meas.type == AP_ExternalAHRS_SensAItion_Parser::MeasurementType::IMU) {
-                handle_imu(meas, now_ms);
-            }
-            else if (meas.type == AP_ExternalAHRS_SensAItion_Parser::MeasurementType::AHRS) {
-                handle_ahrs(meas, now_ms);
-            }
-            else if (meas.type == AP_ExternalAHRS_SensAItion_Parser::MeasurementType::INS) {
-                handle_ins(meas, now_ms);
-            }
-        }); 
-    }
-    
-    return parsed_any;
 }
 
 bool AP_ExternalAHRS_SensAItion::get_variances(float &velVar, float &posVar, float &hgtVar, Vector3f &magVar, float &tasVar) const

@@ -38,7 +38,6 @@ static void fill_u8(uint8_t* data, size_t& loc, uint8_t val)
 }
 
 // --- UPDATED STRUCT (Matches Parser + Date/Week Support) ---
-// REVIEW: Why not use AP_ExternalAHRS_SensAItion_Parser::Measurement?
 struct Measurement {
     Parser::MeasurementType type;
 

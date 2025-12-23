@@ -33,21 +33,6 @@ void AP_ExternalAHRS_SensAItion_Parser::reset_parser()
     current_packet_id = PacketID::UNKNOWN;
 }
 
-// Main parsing loop
-void AP_ExternalAHRS_SensAItion_Parser::parse_bytes(const uint8_t* data, size_t data_size, Measurement& measurement)
-{
-    measurement.type = MeasurementType::UNINITIALIZED;
-    
-    for (size_t i = 0; i < data_size; i++) {
-        if (parse_single_byte(data[i])) {
-            // Valid packet found and verified
-            decode_packet(measurement);
-            reset_parser();
-            break;
-        }
-    }
-}
-
 // Error Handler
 void AP_ExternalAHRS_SensAItion_Parser::handle_invalid_packet()
 {
