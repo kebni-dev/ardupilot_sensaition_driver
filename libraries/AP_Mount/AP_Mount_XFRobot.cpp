@@ -136,10 +136,7 @@ void AP_Mount_XFRobot::update()
         update_angle_target_from_rate(mnt_target.rate_rads, mnt_target.angle_rad);
     }
 
-    // resend target angles at least once per second
-    if (mnt_target.fresh || ((AP_HAL::millis() - last_send_ms) > SEND_ATTITUDE_TARGET_MS)) {
-        send_target_angles(mnt_target.angle_rad);
-    }
+    send_target_angles(mnt_target.angle_rad);
 }
 
 // return true if healthy
@@ -355,7 +352,7 @@ void AP_Mount_XFRobot::process_packet()
 }
 
 // send_target_angles
-void AP_Mount_XFRobot::send_target_angles(const MountTarget& angle_target_rad)
+void AP_Mount_XFRobot::send_target_angles(const MountAngleTarget& angle_target_rad)
 {
     // exit immediately if not initialised or not enough space to send packet
     if (!_initialised || _uart->txspace() < sizeof(SetAttitudePacket)) {

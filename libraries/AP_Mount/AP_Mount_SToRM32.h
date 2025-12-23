@@ -36,13 +36,12 @@ private:
     void find_gimbal();
 
     // send_do_mount_control with latest angle targets
-    void send_do_mount_control(const MountTarget& angle_target_rad);
+    void send_do_mount_control(const MountAngleTarget& angle_target_rad);
 
     // internal variables
     bool _initialised;              // true once the driver has been initialised
     uint8_t _sysid;                 // sysid of gimbal
     uint8_t _compid;                // component id of gimbal
     mavlink_channel_t _chan = MAVLINK_COMM_0;        // mavlink channel used to communicate with gimbal
-    uint32_t _last_send;            // system time of last do_mount_control sent to gimbal
 };
 #endif // HAL_MOUNT_STORM32MAVLINK_ENABLED
