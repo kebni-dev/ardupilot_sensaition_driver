@@ -21,11 +21,13 @@
 #pragma once
 
 #include "SIM_SerialDevice.h"
-#include <AP_Common/AP_Common.h> 
+#include <AP_Common/AP_Common.h>
 
-namespace SITL {
+namespace SITL
+{
 
-class SensAItion : public SerialDevice {
+class SensAItion : public SerialDevice
+{
 public:
     SensAItion(bool interleved_mode);
     void update(void);
@@ -38,7 +40,7 @@ private:
     int _phaseMessage1 = 0;
     int _periodMessage2 = 100;
     int _phaseMessage2 = 5;
-    
+
     uint8_t _buffert[512];
     int _buffert_cnt = 0;
 
@@ -57,7 +59,7 @@ private:
     uint16_t calculate_crc(uint8_t msg_id, const uint8_t* payload, uint16_t length, bool use_id);
 
     uint32_t last_update_us = 0;
-    uint32_t tick_count = 0; 
+    uint32_t tick_count = 0;
 
     bool _interleaved_mode = false; // Now mutable, Shall be driven by EAHRS_OPTIONS. TODO
 };

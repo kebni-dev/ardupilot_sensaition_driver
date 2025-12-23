@@ -28,7 +28,7 @@
 using namespace SITL;
 
 // Constants
-// Gyro: SITL provides deg/s. Driver expects uDeg/s. 
+// Gyro: SITL provides deg/s. Driver expects uDeg/s.
 // Factor = 1e6. (NOT RAD_TO_UDEG!)
 const float GYRO_NOISE_DEG = 0.02f;
 
@@ -37,7 +37,8 @@ const float GYRO_NOISE_DEG = 0.02f;
 const float BARO_NOISE_MHPA = 100.0f;
 
 int sim_log_counter = 0;
-static float rand_float_noise() {
+static float rand_float_noise()
+{
     return ((float)rand() / (float)RAND_MAX) * 2.0f - 1.0f;
 }
 // [CPO FIX] Time Sync Helper
@@ -62,45 +63,48 @@ static uint32_t get_gps_tow_ms()
 {
     struct timeval tv;
     gettimeofday(&tv, nullptr); // Get host system time (simulated wall clock)
-    
+
     // Unix Epoch (1970) vs GPS Epoch (1980) offset is ~315964800 seconds
     // But simplistic SITL often just needs "seconds since Sunday".
-    // Unix Epoch was a Thursday. 
+    // Unix Epoch was a Thursday.
     // +3 days (259200 sec) aligns the modulo to Sunday.
     // 18 leap seconds (approx) for current time.
-    
-    // However, the most robust way in ArduPilot SITL is to use the 
+
+    // However, the most robust way in ArduPilot SITL is to use the
     // simulation start time which is aligned to the host clock.
-    
+
     uint64_t now_us = AP_HAL::micros64();
     double sim_time_sec = (double)AP::sitl()->start_time_UTC + (now_us * 1.0e-6);
-    
+
     // GPS leap seconds (18 as of 2024)
     // GPS time is ahead of UTC.
-    sim_time_sec += 18; 
+    sim_time_sec += 18;
 
     // Seconds in week
     uint32_t seconds_in_week = (uint32_t)sim_time_sec % 604800;
     uint32_t ms_part = (now_us / 1000) % 1000;
-    
+
     return (seconds_in_week * 1000) + ms_part;
 }
 
-SensAItion::SensAItion(bool interleaved_mode) : SerialDevice::SerialDevice() {
+SensAItion::SensAItion(bool interleaved_mode) : SerialDevice::SerialDevice()
+{
     _interleaved_mode = interleaved_mode;
 }
 
 void SensAItion::update(void)
 {
     int tick1kHz = (AP_HAL::micros() + 500) / 1000;
-    if(tick1kHz <= _tick) return;
+    if (tick1kHz <= _tick) {
+        return;
+    }
     _tick = tick1kHz;
 
     char trash_buf[64];
     read_from_autopilot(trash_buf, sizeof(trash_buf));
 
     // [CPO FIX] The "Gentle Start" Delay
-    // Wait 2 seconds after boot to allow ArduPilot to initialize 
+    // Wait 2 seconds after boot to allow ArduPilot to initialize
     // serial ports and parameters before we flood it with data.
     // This prevents race conditions during the reboot test.
     if (AP_HAL::millis() < 1000) {
@@ -114,20 +118,20 @@ void SensAItion::update(void)
     const auto &fdm = _sitl->state;
 
     // 1. Packet 0: IMU
-    if((_tick % _periodMessage0) == _phaseMessage0) {
+    if ((_tick % _periodMessage0) == _phaseMessage0) {
         send_packet_0_imu(fdm);
     }
-    
+
     // 2. Interleaved-only Packets
     if (_interleaved_mode) {
 
         // Packet 1: Orientation
-        if((_tick % _periodMessage1) == _phaseMessage1) {
+        if ((_tick % _periodMessage1) == _phaseMessage1) {
             send_packet_1_orientation(fdm);
         }
 
         // Packet 2: INS
-        if((_tick % _periodMessage2) == _phaseMessage2) {
+        if ((_tick % _periodMessage2) == _phaseMessage2) {
             send_packet_2_ins(fdm);
         }
     }
@@ -185,7 +189,7 @@ void SensAItion::send_packet_0_imu(const struct sitl_fdm &fdm)
 
     if (_interleaved_mode) {
         write_packet(0x00, pkt, sizeof(pkt));
-            // --- DETAILED LOGGING (SIM SIDE) ---
+        // --- DETAILED LOGGING (SIM SIDE) ---
         // if (sim_log_counter++ % 400 == 0) {
         //     fprintf(stderr, "[SIM-OUT] IMU Packet (Interleaved Mode: %d)\n", _interleaved_mode);
         //     fprintf(stderr, "   Acc(ug): X=%d Y=%d Z=%d\n", (int)accel_x, (int)accel_y, (int)accel_z);
@@ -204,7 +208,7 @@ void SensAItion::send_packet_0_imu(const struct sitl_fdm &fdm)
         //    fprintf(stderr, "   Bar(0.1Pa): %d | Temp(raw): %d\n", (int)baro, (int)temperature);
         //}
     }
-    
+
 }
 
 void SensAItion::send_packet_1_orientation(const struct sitl_fdm &fdm)
@@ -226,7 +230,7 @@ void SensAItion::send_packet_1_orientation(const struct sitl_fdm &fdm)
     //     fprintf(stderr, "[SIM-OUT] AHRS Packet (ID 0x01)\n");
     //     fprintf(stderr, "   Quat(1e-6): W=%d X=%d Y=%d Z=%d\n", q0, q1, q2, q3);
     // }
-    
+
     write_packet(0x01, pkt, sizeof(pkt));
 }
 
@@ -238,14 +242,14 @@ void SensAItion::send_packet_2_ins(const struct sitl_fdm &fdm)
     uint8_t align_status = 1; // 1 = Aligned
     uint8_t gnss1_fix = 3; // 3D Fix
     uint8_t gnss2_fix = 3;
-    
-    uint32_t num_sats = 0x0C0C0C0C; 
-    
+
+    uint32_t num_sats = 0x0C0C0C0C;
+
     // [CPO FIX] Calculate accurate GPS Time of Week using the SITL wall clock
     // Replaces previous calculate_itow()
     struct timeval tv;
     simulation_timeval(&tv);
-    
+
     // Convert TV (Seconds+Micros) to GPS Time of Week (ms)
     // We assume SITL starts somewhat recently.
     // Calculate seconds since Sunday 00:00:00 UTC
@@ -256,15 +260,15 @@ void SensAItion::send_packet_2_ins(const struct sitl_fdm &fdm)
     // Position (deg -> 1e-7 deg)
     int32_t lat = (int32_t)(fdm.latitude * 1.0e7);
     int32_t lon = (int32_t)(fdm.longitude * 1.0e7);
-    
+
     // Velocity (m/s -> mm/s)
     int32_t vel_n = (int32_t)(fdm.speedN * 1000.0f);
     int32_t vel_e = (int32_t)(fdm.speedE * 1000.0f);
     int32_t vel_d = (int32_t)(fdm.speedD * 1000.0f);
- 
+
     // Altitude (m -> mm)
     int32_t alt_mm = (int32_t)(fdm.altitude * 1000.0);
-    
+
     // Accuracy (mm, mm/s)
     int32_t acc_lat_mm = 100; // 0.1m
     int32_t acc_lon_mm = 100; // 0.1m
@@ -279,10 +283,10 @@ void SensAItion::send_packet_2_ins(const struct sitl_fdm &fdm)
     uint16_t year = 2025;
     uint16_t month = 12;
     uint8_t day = 7;
-    
+
     // --- 2. PACKING (Big Endian - 69 Bytes) ---
     uint8_t pkt[69];
-    
+
     // Bytes 0-3: Num Sats (4B)
     put_be32_ptr(&pkt[0], num_sats);
 
@@ -315,7 +319,7 @@ void SensAItion::send_packet_2_ins(const struct sitl_fdm &fdm)
     // 38-39: GNSS Fix
     pkt[38] = gnss1_fix;
     pkt[39] = gnss2_fix;
-    
+
     // 40-44: UTC Date/Time
     put_be16_ptr(&pkt[40], year);
     put_be16_ptr(&pkt[42], month);
@@ -328,9 +332,9 @@ void SensAItion::send_packet_2_ins(const struct sitl_fdm &fdm)
     put_be32_ptr(&pkt[57], acc_ve_mm);
     put_be32_ptr(&pkt[61], acc_vd_mm);
     put_be32_ptr(&pkt[65], acc_vd_pos_mm);
-    
+
     // --- LOGGING PROBE (SIM SIDE) ---
-    // if (sim_log_counter % 100 == 0) { 
+    // if (sim_log_counter % 100 == 0) {
     //     fprintf(stderr, "[SIM-OUT] INS Packet (iTOW: %u)\n", itow);
     //     fprintf(stderr, "   Pos: Lat=%d Lon=%d Alt=%d mm\n", lat, lon, alt_mm);
     //     fprintf(stderr, "   Vel: N=%d E=%d D=%d mm/s\n", vel_n, vel_e, vel_d);
@@ -342,39 +346,48 @@ void SensAItion::send_packet_2_ins(const struct sitl_fdm &fdm)
 }
 
 
-void SensAItion::flush_packets() {
-    if(_buffert_cnt > 0){
+void SensAItion::flush_packets()
+{
+    if (_buffert_cnt > 0) {
         write_to_autopilot((const char *)&_buffert, _buffert_cnt);
         _buffert_cnt = 0;
     }
 }
 
-void SensAItion::write_to_autopilot_buf(const char *data, int length) {
+void SensAItion::write_to_autopilot_buf(const char *data, int length)
+{
     memcpy(&_buffert[_buffert_cnt], data, length);
     _buffert_cnt += length;
 }
 
-void SensAItion::write_packet(uint8_t msg_id, const uint8_t* payload, uint16_t length) {
-    const uint8_t header = 0xFA; 
+void SensAItion::write_packet(uint8_t msg_id, const uint8_t* payload, uint16_t length)
+{
+    const uint8_t header = 0xFA;
     write_to_autopilot_buf((const char *)&header, 1);
     write_to_autopilot_buf((const char *)&msg_id, 1);
     write_to_autopilot_buf((const char *)payload, length);
-    uint8_t crc = (uint8_t)calculate_crc(msg_id, payload, length, true);    
+    uint8_t crc = (uint8_t)calculate_crc(msg_id, payload, length, true);
     write_to_autopilot_buf((const char *)&crc, 1);
 }
 
-void SensAItion::write_legacy_packet(const uint8_t* payload, uint16_t length) {
-    const uint8_t header = 0xFA; 
+void SensAItion::write_legacy_packet(const uint8_t* payload, uint16_t length)
+{
+    const uint8_t header = 0xFA;
     write_to_autopilot_buf((const char *)&header, 1);
     write_to_autopilot_buf((const char *)payload, length);
     uint8_t crc = (uint8_t)calculate_crc(0, payload, length, false);
     write_to_autopilot_buf((const char *)&crc, 1);
 }
 
-uint16_t SensAItion::calculate_crc(uint8_t msg_id, const uint8_t* payload, uint16_t length, bool use_id) {
+uint16_t SensAItion::calculate_crc(uint8_t msg_id, const uint8_t* payload, uint16_t length, bool use_id)
+{
     uint8_t crc = 0;
-    if (use_id) crc ^= msg_id;
-    for (uint16_t i = 0; i < length; i++) crc ^= payload[i];
+    if (use_id) {
+        crc ^= msg_id;
+    }
+    for (uint16_t i = 0; i < length; i++) {
+        crc ^= payload[i];
+    }
     return crc;
 }
 
